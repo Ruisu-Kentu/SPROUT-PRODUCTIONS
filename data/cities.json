@@ -1,0 +1,35 @@
+{
+  "Ilocos Norte": [
+    "Laoag City",
+    "Batac City",
+    "Paoay",
+    "San Nicolas",
+    "Dingras",
+    "Currimao"
+  ],
+  "Ilocos Sur": [
+    "Vigan City",
+    "Candon City",
+    "Bantay",
+    "Santa Maria",
+    "Narvacan",
+    "San Ildefonso"
+  ],
+  "La Union": [
+    "San Fernando City",
+    "Bauang",
+    "Agoo",
+    "Rosario",
+    "San Juan",
+    "Naguilian"
+  ],
+  "Pangasinan": [
+    "Dagupan City",
+    "Urdaneta City",
+    "San Carlos City",
+    "Alaminos City",
+    "Lingayen",
+    "Binmaley",
+    "Calasiao"
+  ]
+}
