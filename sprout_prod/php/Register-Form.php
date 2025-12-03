@@ -188,5 +188,7 @@
       // this.reset();
     });
   </script>
+
+    <!-- //try rani sa github para makita if nay changes hahahha -->
 </body>
 </html>
