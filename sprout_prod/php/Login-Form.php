@@ -1,3 +1,49 @@
+<?php
+session_start();
+
+// DATABASE CONNECTION
+$host = "localhost";
+$username_db = "root";
+$password_db = "";
+$dbname = "ecommerce_db";
+
+$conn = new mysqli($host, $username_db, $password_db, $dbname);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+$error = "";
+
+// HANDLE LOGIN
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $username = trim($_POST["username"]);
+    $password = trim($_POST["password"]);
+
+    if (empty($username) || empty($password)) {
+        $error = "All fields are required.";
+    } else {
+        $stmt = $conn->prepare("SELECT id, password FROM users WHERE username = ?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows === 1) {
+            $user = $result->fetch_assoc();
+            if (password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $username;
+                header("Location: Landing-Page-Section.php");
+                exit();
+            } else {
+                $error = "Incorrect password!";
+            }
+        } else {
+            $error = "Username not found!";
+        }
+    }
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,12 +113,14 @@
           <div class="form-container">
             <h2 class="form-title">LOGIN</h2>
             
-            <form id="registrationForm">
+            <form id="registrationForm" method="POST" action="">
+              <?php if($error) echo "<p style='color:red;'>$error</p>"; ?>
               <div class="form-group">
-                <label for="email" class="form-label">Email Address</label>
+                <label for="email" class="form-label">Username</label>
                 <div class="input-wrapper">
                   <input
-                    type="email"
+                    type="text"
+                    name="username"
                     id="email"
                     placeholder="Enter your email"
                     class="form-input"
@@ -90,6 +138,7 @@
                 <div class="input-wrapper">
                   <input
                     type="password"
+                    name="password"
                     id="password"
                     placeholder="Enter your password"
                     class="form-input"
@@ -175,25 +224,5 @@
         </div>
     </footer>
 
-    
-
-  <!-- JavaScript -->
-  <script>
-    // Form submission handler
-    document.getElementById('registrationForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      
-      console.log('Registration submitted:', { email, password });
-      
-      // Add your registration logic here
-      alert('Registration form submitted! Check the console for details.');
-      
-      // Optionally reset the form
-      // this.reset();
-    });
-  </script>
 </body>
 </html>

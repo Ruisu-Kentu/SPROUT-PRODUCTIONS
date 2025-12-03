@@ -1,12 +1,72 @@
+<?php
+session_start();
+
+// ============================
+// DATABASE CONNECTION
+// ============================
+$host = "localhost";
+$dbUsername = "root";
+$dbPassword = "";
+$dbName = "ecommerce_db";
+
+$conn = new mysqli($host, $dbUsername, $dbPassword, $dbName);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// ============================
+// INITIALIZE VARIABLES
+// ============================
+$success = "";
+$error = "";
+
+// ============================
+// HANDLE REGISTRATION
+// ============================
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    $username = isset($_POST["username"]) ? trim($_POST["username"]) : '';
+    $password = isset($_POST["password"]) ? trim($_POST["password"]) : '';
+
+    // Basic validation
+    if (empty($username) || empty($password)) {
+        $error = "All fields are required.";
+    } elseif (strlen($password) < 6) {
+        $error = "Password must be at least 6 characters.";
+    } else {
+        // Check if username exists
+        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $error = "Username already taken.";
+        } else {
+            // Hash password
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+            // Insert user into database
+            $insert = $conn->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+            $insert->bind_param("ss", $username, $hashedPassword);
+
+            if ($insert->execute()) {
+                $success = "Account created successfully! You can now <a href='Login-Form.php'>login</a>.";
+            } else {
+                $error = "Error creating account. Please try again.";
+            }
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sprout Productions - Sign Up</title>
-<link rel="stylesheet" href="../css/regis-form.css">
-    <link rel="icon" href="../images/sprout logo bg-removed 3.png">
-  
+  <link rel="stylesheet" href="../css/regis-form.css">
+  <link rel="icon" href="../images/sprout logo bg-removed 3.png">
 </head>
 <body>
   <div class="page-container">
@@ -16,7 +76,6 @@
             <a href="../php/Landing-Page-Section.php">SPROUT PRODUCTIONS</a>
             <img src="../images/sprout logo bg-removed 3.png" alt="">
         </div>
-
         <nav>
             <ul class="nav-menu">
                 <li><a href="#">New Arrivals</a></li>
@@ -24,7 +83,6 @@
                 <li><a href="../php/Limited-Time-Offers.php">Limited-Time Offers</a></li>
             </ul>
         </nav>
-
         <div class="header-right">
             <div class="search-bar">
                 <img src="../images/Search_logo.png" alt="">
@@ -45,7 +103,7 @@
     <div class="breadcrumb">
       <a href="#" class="breadcrumb-link">Home</a>
       <span class="breadcrumb-separator">/</span>
-      <span class="breadcrumb-current">Login</span>
+      <span class="breadcrumb-current">Register</span>
     </div>
 
     <!-- Main Content -->
@@ -58,46 +116,27 @@
             Your First Purchase!
           </h1>
           <img src="../images/logo-loginForm.png" alt="">
-          </div> 
-       
+        </div> 
 
         <!-- Right Section - Sign Up Form -->
         <div class="right-section">
           <div class="form-container">
             <h2 class="form-title">SIGN UP</h2>
             
-            <form id="registrationForm">
+            <form id="registrationForm" method="POST" action="">
+                <?php if($error) echo "<p style='color:red;'>$error</p>"; ?>
+                <?php if($success) echo "<p style='color:green;'>$success</p>"; ?>
               <div class="form-group">
-                <label for="email" class="form-label">Email Address</label>
+                <label for="username" class="form-label">Username</label>
                 <div class="input-wrapper">
-                  <input
-                    type="email"
-                    id="email"
-                    placeholder="Enter your email"
-                    class="form-input"
-                    required
-                  >
-                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
-                  </svg>
+                  <input type="username" id="email" name="username" placeholder="Enter your username" class="form-input" required>
                 </div>
               </div>
 
               <div class="form-group">
                 <label for="password" class="form-label">Password</label>
                 <div class="input-wrapper">
-                  <input
-                    type="password"
-                    id="password"
-                    placeholder="Enter your password"
-                    class="form-input"
-                    required
-                  >
-                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                  </svg>
+                 <input type="password" id="password" name="password" placeholder="Enter your password" class="form-input" required>
                 </div>
               </div>
 
@@ -111,11 +150,9 @@
             </form>
           </div>
         </div>
-
-     
     </main>
 
-     <!-- Footer -->
+    <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-column">
@@ -123,14 +160,7 @@
                 <p class="footer-description">
                     Proudly Bisaya. Proudly Bisdak. Style with Soul. Rooted in Bisaya Pride. Bisaya-Born. Culture-Worn.
                 </p>
-                <div class="social-icons">
-                    <div class="social-icon-fb"></div>
-                    <div class="social-icon-insta"></div>
-                    <div class="social-icon-github"></div>
-                    <div class="social-icon-twitter"></div>
-                </div>
             </div>
-
             <div class="footer-column">
                 <h3>COMPANY</h3>
                 <ul class="footer-links">
@@ -140,7 +170,6 @@
                     <li><a href="#">Career</a></li>
                 </ul>
             </div>
-
             <div class="footer-column">
                 <h3>HELP</h3>
                 <ul class="footer-links">
@@ -150,7 +179,6 @@
                     <li><a href="#">Privacy Policy</a></li>
                 </ul>
             </div>
-
             <div class="footer-column">
                 <h3>FAQ</h3>
                 <ul class="footer-links">
@@ -168,27 +196,5 @@
         </div>
     </footer>
 
-    
-
-  <!-- JavaScript -->
-  <script>
-    // Form submission handler
-    document.getElementById('registrationForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      
-      console.log('Registration submitted:', { email, password });
-      
-      // Add your registration logic here
-      alert('Registration form submitted! Check the console for details.');
-      
-      // Optionally reset the form
-      // this.reset();
-    });
-  </script>
-
-    <!-- //try rani sa github para makita if nay changes hahahha -->
 </body>
 </html>
