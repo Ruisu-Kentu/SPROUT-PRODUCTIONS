@@ -23,11 +23,11 @@
             <button class="mobile-menu-btn" onclick="toggleMenu()">☰</button>
             <ul class="nav-links" id="navLinks">
                 <li><a href="#" class="active" onclick="navigate('dashboard')">Dashboard</a></li>
-                <li><a href="#" onclick="navigate('products')">Products</a></li>
-                <li><a href="#" onclick="navigate('orders')">Orders</a></li>
-                <li><a href="#" onclick="navigate('customers')">Customers</a></li>
-                <li><a href="#" onclick="navigate('analytics')">Analytics</a></li>
-                <li><a href="#" onclick="navigate('settings')">Settings</a></li>
+                <li><a href="../php/Admin-Products-Page.php" onclick="navigate('products')">Products</a></li>
+                <li><a href="../php/Admin-Orders-Page.php" onclick="navigate('orders')">Orders</a></li>
+                <li><a href="../php/Admin-Customers-Page.php" onclick="navigate('customers')">Customers</a></li>
+                <li><a href="../php/Admin-Analytics-Page.php" onclick="navigate('analytics')">Analytics</a></li>
+                <li><a href="../php/Admin-Settings-Page.php" onclick="navigate('settings')">Settings</a></li>
             </ul>
             <div class="nav-search">
                 <input type="text" class="search-box" placeholder="Search..." onkeyup="handleSearch(event)">
@@ -217,7 +217,7 @@
             // Add active class to clicked link
             event.target.classList.add('active');
             
-            alert('Navigating to ' + section + ' section');
+            // alert('Navigating to ' + section + ' section');
             // Add your navigation logic here
         }
 
@@ -237,7 +237,8 @@
         }
 
         function addProduct() {
-            alert('Add New Product functionality would open here');
+            
+            window.location.href = '../php/Admin-Products-Page.php';
         }
 
         function viewOrders() {
