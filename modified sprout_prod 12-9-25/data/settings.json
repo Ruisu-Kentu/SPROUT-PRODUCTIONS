@@ -1,0 +1,11 @@
+{
+    "storeName": "Sprout Productions ",
+    "storeEmail": "info@sproutproductions.example",
+    "paymentMethods": {
+        "card": true,
+        "cod": true,
+        "paypal": false
+    },
+    "shippingFee": 49.99,
+    "adminPasswordHash": ""
+}
