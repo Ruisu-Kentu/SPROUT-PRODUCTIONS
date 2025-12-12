@@ -4,21 +4,19 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header("Location: Login-Form.php");
+    echo '<script>
+        alert("⚠️ ADMIN ACCESS REQUIRED\\n\\nPlease log in as an administrator first!");
+        window.location.href = "Login-Form.php";
+    </script>';
     exit();
 }
 
 // Check if user is admin
 if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
-    header("Location: Landing-Page-Section.php");
-    exit();
-}
-
-// Check session timeout (30 minutes)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
-    session_unset();
-    session_destroy();
-    header("Location: Login-Form.php?error=session_expired");
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nYou don\'t have administrator privileges!");
+        window.location.href = "Landing-Page-Section.php";
+    </script>';
     exit();
 }
 
@@ -42,12 +40,15 @@ if ($conn->connect_error) {
 // Set charset to UTF-8
 $conn->set_charset("utf8mb4");
 
-// Create products table if it doesn't exist
+// Create products table if it doesn't exist (updated with discount fields)
 $createTableQuery = "CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(50) NOT NULL,
     price DECIMAL(10, 2) NOT NULL,
+    discount_percent DECIMAL(5, 2) DEFAULT 0.00,
+    discount_price DECIMAL(10, 2) GENERATED ALWAYS AS (price * (1 - discount_percent / 100)) STORED,
+    is_discounted TINYINT(1) DEFAULT 0,
     stock INT NOT NULL DEFAULT 0,
     description TEXT,
     image_path VARCHAR(500),
@@ -59,12 +60,19 @@ if (!$conn->query($createTableQuery)) {
     die("Error creating table: " . $conn->error);
 }
 
+// Create uploads directory if it doesn't exist
+$uploadDir = '../uploads/products/';
+if (!file_exists($uploadDir)) {
+    mkdir($uploadDir, 0777, true);
+}
+
 // Handle form submission for adding product
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_product'])) {
         $productName = trim($_POST['productName']);
         $productCategory = $_POST['productCategory'];
         $productPrice = floatval($_POST['productPrice']);
+        $productDiscount = isset($_POST['productDiscount']) ? floatval($_POST['productDiscount']) : 0;
         $productStock = intval($_POST['productStock']);
         $productDescription = trim($_POST['productDescription']);
         
@@ -79,6 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "Price must be greater than 0";
         }
         
+        if ($productDiscount < 0 || $productDiscount > 100) {
+            $errors[] = "Discount must be between 0 and 100 percent";
+        }
+        
         if ($productStock < 0) {
             $errors[] = "Stock cannot be negative";
         }
@@ -86,12 +98,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Handle file upload
         $imagePath = '';
         if (isset($_FILES['productImage']) && $_FILES['productImage']['error'] === UPLOAD_ERR_OK) {
-            $uploadDir = '../uploads/products/';
-            
-            // Create directory if it doesn't exist
-            if (!file_exists($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
             
             // Generate unique filename
             $fileExtension = strtolower(pathinfo($_FILES['productImage']['name'], PATHINFO_EXTENSION));
@@ -104,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Check file size (max 5MB)
                 if ($_FILES['productImage']['size'] <= 5 * 1024 * 1024) {
                     if (move_uploaded_file($_FILES['productImage']['tmp_name'], $targetFile)) {
+                        // Save relative path for database (without ../ prefix)
                         $imagePath = 'uploads/products/' . $fileName;
                     } else {
                         $errors[] = "Failed to upload image";
@@ -118,10 +125,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "Product image is required";
         }
         
+        // Calculate if product is discounted
+        $isDiscounted = ($productDiscount > 0) ? 1 : 0;
+        
         // If no errors, insert into database
         if (empty($errors)) {
-            $stmt = $conn->prepare("INSERT INTO products (name, category, price, stock, description, image_path) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("ssdiss", $productName, $productCategory, $productPrice, $productStock, $productDescription, $imagePath);
+            $stmt = $conn->prepare("INSERT INTO products (name, category, price, discount_percent, is_discounted, stock, description, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssddiiss", $productName, $productCategory, $productPrice, $productDiscount, $isDiscounted, $productStock, $productDescription, $imagePath);
             
             if ($stmt->execute()) {
                 $_SESSION['success_message'] = "Product added successfully!";
@@ -130,6 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } else {
                 $_SESSION['error_message'] = "Error adding product: " . $conn->error;
+                // Delete uploaded file if database insertion failed
                 if (!empty($imagePath) && file_exists('../' . $imagePath)) {
                     unlink('../' . $imagePath);
                 }
@@ -150,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $productName = trim($_POST['productName']);
         $productCategory = $_POST['productCategory'];
         $productPrice = floatval($_POST['productPrice']);
+        $productDiscount = isset($_POST['productDiscount']) ? floatval($_POST['productDiscount']) : 0;
         $productStock = intval($_POST['productStock']);
         $productDescription = trim($_POST['productDescription']);
         
@@ -164,6 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "Price must be greater than 0";
         }
         
+        if ($productDiscount < 0 || $productDiscount > 100) {
+            $errors[] = "Discount must be between 0 and 100 percent";
+        }
+        
         if ($productStock < 0) {
             $errors[] = "Stock cannot be negative";
         }
@@ -171,11 +187,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Handle file upload if new image is provided
         $imagePath = '';
         if (isset($_FILES['productImage']) && $_FILES['productImage']['error'] === UPLOAD_ERR_OK) {
-            $uploadDir = '../uploads/products/';
-            
-            if (!file_exists($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
             
             $fileExtension = strtolower(pathinfo($_FILES['productImage']['name'], PATHINFO_EXTENSION));
             $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
@@ -210,16 +221,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        // Calculate if product is discounted
+        $isDiscounted = ($productDiscount > 0) ? 1 : 0;
+        
         // If no errors, update database
         if (empty($errors)) {
             if (!empty($imagePath)) {
                 // Update with new image
-                $stmt = $conn->prepare("UPDATE products SET name = ?, category = ?, price = ?, stock = ?, description = ?, image_path = ? WHERE id = ?");
-                $stmt->bind_param("ssdissi", $productName, $productCategory, $productPrice, $productStock, $productDescription, $imagePath, $productId);
+                $stmt = $conn->prepare("UPDATE products SET name = ?, category = ?, price = ?, discount_percent = ?, is_discounted = ?, stock = ?, description = ?, image_path = ? WHERE id = ?");
+                $stmt->bind_param("ssddiissi", $productName, $productCategory, $productPrice, $productDiscount, $isDiscounted, $productStock, $productDescription, $imagePath, $productId);
             } else {
                 // Update without changing image
-                $stmt = $conn->prepare("UPDATE products SET name = ?, category = ?, price = ?, stock = ?, description = ? WHERE id = ?");
-                $stmt->bind_param("ssdisi", $productName, $productCategory, $productPrice, $productStock, $productDescription, $productId);
+                $stmt = $conn->prepare("UPDATE products SET name = ?, category = ?, price = ?, discount_percent = ?, is_discounted = ?, stock = ?, description = ? WHERE id = ?");
+                $stmt->bind_param("ssddiisi", $productName, $productCategory, $productPrice, $productDiscount, $isDiscounted, $productStock, $productDescription, $productId);
             }
             
             if ($stmt->execute()) {
@@ -263,7 +277,10 @@ if (isset($_SESSION['form_data'])) {
 
 // Fetch products from database
 $products = [];
-$query = "SELECT * FROM products ORDER BY created_at DESC";
+$query = "SELECT *, 
+          price * (1 - discount_percent / 100) as discount_price 
+          FROM products 
+          ORDER BY is_discounted DESC, created_at DESC";
 $result = $conn->query($query);
 
 if ($result && $result->num_rows > 0) {
@@ -319,795 +336,892 @@ if (isset($_GET['success'])) {
     <link rel="stylesheet" href="../css/admin-products-page.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
-
     <style>
-/* Additional styles for updated layout */
-.admin-welcome {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 8px 16px;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.admin-icon-small {
-    width: 20px;
-    height: 20px;
-    filter: invert(1);
-    opacity: 0.9;
-}
-
-.admin-text {
-    color: #fff;
-    font-weight: 600;
-}
-
-/* Alert Messages */
-.alert {
-    padding: 12px 20px;
-    margin-bottom: 20px;
-    border-radius: 8px;
-    font-weight: 500;
-    animation: fadeIn 0.5s;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.alert-success {
-    background-color: #E8F5E9;
-    color: #2e7d32;
-    border: 1px solid #4CAF50;
-}
-
-.alert-error {
-    background-color: #FFEBEE;
-    color: #c62828;
-    border: 1px solid #f44336;
-}
-
-/* No Products State */
-.no-products {
-    text-align: center;
-    padding: 60px 40px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    grid-column: 1 / -1;
-}
-
-.no-products p {
-    font-size: 18px;
-    color: #666;
-    margin-bottom: 20px;
-    font-family: Arial, sans-serif;
-}
-
-.no-products i {
-    font-size: 64px;
-    color: #8B4513;
-    margin-bottom: 20px;
-}
-
-/* Product Image */
-.product-image {
-    width: 100%;
-    height: 200px;
-    overflow: hidden;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    cursor: pointer;
-    border: 1px solid #eee;
-}
-
-.product-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.3s ease;
-}
-
-.product-image:hover img {
-    transform: scale(1.08);
-}
-
-/* Product Actions */
-.product-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 15px;
-}
-
-.action-btn {
-    padding: 10px 18px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 12px;
-    font-family: Arial, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-}
-
-.action-btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.3);
-    transform: translate(-50%, -50%);
-    transition: width 0.4s ease, height 0.4s ease;
-}
-
-.action-btn:active::before {
-    width: 300px;
-    height: 300px;
-}
-
-.view-btn {
-    background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
-    color: white;
-    box-shadow: 0 3px 10px rgba(139, 69, 19, 0.2);
-}
-
-.view-btn:hover {
-    background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
-    box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
-    transform: translateY(-2px);
-}
-
-.edit-btn {
-    background: linear-gradient(135deg, #2e7d32 0%, #388e3c 100%);
-    color: white;
-    box-shadow: 0 3px 10px rgba(46, 125, 50, 0.2);
-}
-
-.edit-btn:hover {
-    background: linear-gradient(135deg, #388e3c 0%, #2e7d32 100%);
-    box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);
-    transform: translateY(-2px);
-}
-
-.delete-btn {
-    background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
-    color: white;
-    box-shadow: 0 3px 10px rgba(198, 40, 40, 0.2);
-}
-
-.delete-btn:hover {
-    background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
-    box-shadow: 0 4px 15px rgba(198, 40, 40, 0.3);
-    transform: translateY(-2px);
-}
-
-.action-btn:active {
-    transform: translateY(0);
-}
-
-/* Form Group */
-.form-group small {
-    display: block;
-    color: #666;
-    font-size: 12px;
-    margin-top: 5px;
-    font-family: Arial, sans-serif;
-}
-
-/* Product Card */
-.product-card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    border: 1px solid #eee;
-}
-
-.product-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-}
-
-/* Stock Status */
-.stock-status {
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    display: inline-block;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-family: Arial, sans-serif;
-}
-
-.stock-in-stock {
-    background-color: #E8F5E9;
-    color: #2e7d32;
-}
-
-.stock-low {
-    background-color: #FFF3E0;
-    color: #e65100;
-}
-
-.stock-out {
-    background-color: #FFEBEE;
-    color: #c62828;
-}
-
-/* Modal Overlay */
-.modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.6);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    backdrop-filter: blur(2px);
-}
-
-/* Modal Container */
-.modal-container {
-    background: white;
-    border-radius: 12px;
-    width: 100%;
-    max-width: 600px;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    animation: modalSlideIn 0.3s ease;
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50px) scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-/* Modal Header */
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px;
-    border-bottom: 2px solid #8B4513;
-    background: linear-gradient(135deg, #8B4513 0%, #6B3410 100%);
-    color: white;
-    border-radius: 12px 12px 0 0;
-}
-
-.modal-header h2 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-    font-family: 'Georgia', serif;
-}
-
-.modal-close {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: white;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-}
-
-.modal-close:hover {
-    background-color: rgba(255,255,255,0.2);
-    transform: rotate(90deg);
-}
-
-/* Modal Body */
-.modal-body {
-    padding: 24px;
-}
-
-/* Form Group */
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 600;
-    color: #333;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-    width: 100%;
-    padding: 12px 15px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 14px;
-    font-family: Arial, sans-serif;
-    transition: all 0.3s ease;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-    outline: none;
-    border-color: #8B4513;
-    box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
-}
-
-.form-group textarea {
-    resize: vertical;
-    min-height: 100px;
-}
-
-/* File Input */
-.file-input-wrapper {
-    position: relative;
-    overflow: hidden;
-    display: inline-block;
-    width: 100%;
-}
-
-.file-input-wrapper input[type="file"] {
-    position: absolute;
-    left: 0;
-    top: 0;
-    opacity: 0;
-    width: 100%;
-    height: 100%;
-    cursor: pointer;
-}
-
-.file-input-button {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: #f9f9f9;
-    border: 2px dashed #ddd;
-    border-radius: 6px;
-    color: #666;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: Arial, sans-serif;
-    font-weight: 500;
-}
-
-.file-input-button:hover {
-    background: #f0f0f0;
-    border-color: #8B4513;
-    color: #8B4513;
-}
-
-/* Current Image */
-.current-image {
-    margin-top: 15px;
-    text-align: center;
-    padding: 15px;
-    background: #f9f9f9;
-    border-radius: 8px;
-}
-
-.current-image img {
-    max-width: 200px;
-    max-height: 200px;
-    border-radius: 8px;
-    border: 2px solid #ddd;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.current-image small {
-    display: block;
-    margin-top: 10px;
-    color: #666;
-    font-family: Arial, sans-serif;
-}
-
-/* Modal Footer */
-.modal-footer {
-    padding: 20px 24px;
-    border-top: 1px solid #eee;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    background: #f9f9f9;
-    border-radius: 0 0 12px 12px;
-}
-
-/* Buttons */
-.btn {
-    padding: 12px 30px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 14px;
-    font-family: Arial, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    position: relative;
-    overflow: hidden;
-}
-
-.btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s ease;
-}
-
-.btn:hover::before {
-    left: 100%;
-}
-
-.btn-secondary {
-    background: white;
-    color: #333;
-    border: 2px solid #ddd;
-}
-
-.btn-secondary:hover {
-    background: #f5f5f5;
-    border-color: #8B4513;
-    color: #8B4513;
-    transform: translateY(-1px);
-}
-
-.btn-primary {
-    background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
-    color: white;
-    border: none;
-    box-shadow: 0 4px 15px rgba(139, 69, 19, 0.25);
-}
-
-.btn-primary:hover {
-    background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
-    box-shadow: 0 6px 20px rgba(139, 69, 19, 0.35);
-    transform: translateY(-2px);
-}
-
-.btn-primary:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 10px rgba(139, 69, 19, 0.3);
-}
-
-.btn-danger {
-    background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
-    color: white;
-    border: none;
-    box-shadow: 0 4px 15px rgba(198, 40, 40, 0.25);
-}
-
-.btn-danger:hover {
-    background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
-    box-shadow: 0 6px 20px rgba(198, 40, 40, 0.35);
-    transform: translateY(-2px);
-}
-
-.btn-danger:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 10px rgba(198, 40, 40, 0.3);
-}
-
-/* View Modal Specific */
-.product-view-image {
-    text-align: center;
-    margin-bottom: 25px;
-    padding: 20px;
-    background: #f9f9f9;
-    border-radius: 8px;
-}
-
-.product-view-image img {
-    max-width: 100%;
-    max-height: 350px;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    border: 2px solid #eee;
-}
-
-/* Product Details Grid */
-.product-details-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.detail-item {
-    padding: 15px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    border: 1px solid #eee;
-}
-
-.detail-label {
-    font-size: 11px;
-    color: #666;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-    font-family: Arial, sans-serif;
-}
-
-.detail-value {
-    font-size: 18px;
-    font-weight: 600;
-    color: #8B4513;
-    font-family: 'Georgia', serif;
-}
-
-/* Detail Description */
-.detail-description {
-    padding: 20px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    border: 1px solid #eee;
-}
-
-.detail-description .detail-label {
-    margin-bottom: 12px;
-}
-
-.detail-description .detail-value {
-    font-size: 15px;
-    line-height: 1.6;
-    color: #333;
-    font-family: Arial, sans-serif;
-    font-weight: normal;
-}
-
-/* Quick Action Button */
-.quick-action-btn {
-    background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
-    color: white;
-    border: none;
-    padding: 14px 32px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.3s ease;
-    font-size: 14px;
-    font-family: Arial, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    box-shadow: 0 4px 15px rgba(139, 69, 19, 0.25);
-    position: relative;
-    overflow: hidden;
-}
-
-.quick-action-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s ease;
-}
-
-.quick-action-btn:hover::before {
-    left: 100%;
-}
-
-.quick-action-btn:hover {
-    background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
-    box-shadow: 0 6px 20px rgba(139, 69, 19, 0.35);
-    transform: translateY(-2px);
-}
-
-.quick-action-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 10px rgba(139, 69, 19, 0.3);
-}
-
-/* Page Actions */
-.page-actions {
-    margin-bottom: 25px;
-}
-
-/* Product Card Enhancements */
-.product-name {
-    font-size: 18px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 10px;
-    height: 48px;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-family: 'Georgia', serif;
-    line-height: 1.3;
-}
-
-.product-category {
-    display: inline-block;
-    padding: 5px 12px;
-    background: rgba(139, 69, 19, 0.1);
-    color: #8B4513;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-family: Arial, sans-serif;
-}
-
-.product-price {
-    font-size: 24px;
-    font-weight: 700;
-    color: #2e7d32;
-    margin-bottom: 12px;
-    font-family: 'Georgia', serif;
-}
-
-.product-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #eee;
-    font-family: Arial, sans-serif;
-}
-
-/* Filter Section */
-.filter-section {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 30px;
-    padding: 20px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    border: 1px solid #eee;
-    flex-wrap: wrap;
-}
-
-.filter-section select,
-.filter-section input {
-    padding: 12px 15px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 14px;
-    transition: all 0.3s ease;
-    font-family: Arial, sans-serif;
-}
-
-.filter-section select:focus,
-.filter-section input:focus {
-    outline: none;
-    border-color: #8B4513;
-    box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
-}
-
-.filter-section select {
-    min-width: 200px;
-}
-
-.filter-section input {
-    flex: 1;
-    min-width: 250px;
-}
-
-/* Products Grid */
-.products-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 25px;
-    margin-top: 20px;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .modal-container {
-        max-width: 95%;
-    }
-    
-    .product-details-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .filter-section {
-        flex-direction: column;
-    }
-    
-    .filter-section select,
-    .filter-section input {
-        min-width: 100%;
-        width: 100%;
-    }
-    
-    .products-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .product-actions {
-        flex-direction: column;
-    }
-    
-    .action-btn {
-        width: 100%;
-    }
-    
-    .modal-footer {
-        flex-direction: column;
-    }
-    
-    .btn {
-        width: 100%;
-    }
-}
-
-@media (max-width: 480px) {
-    .modal-header h2 {
-        font-size: 18px;
-    }
-    
-    .product-name {
-        font-size: 16px;
-        height: auto;
-    }
-    
-    .product-price {
-        font-size: 20px;
-    }
-}
-</style>
-   
+        /* Additional styles for updated layout */
+        .admin-welcome {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .admin-icon-small {
+            width: 20px;
+            height: 20px;
+            filter: invert(1);
+            opacity: 0.9;
+        }
+
+        .admin-text {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            animation: fadeIn 0.5s;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .alert-success {
+            background-color: #E8F5E9;
+            color: #2e7d32;
+            border: 1px solid #4CAF50;
+        }
+
+        .alert-error {
+            background-color: #FFEBEE;
+            color: #c62828;
+            border: 1px solid #f44336;
+        }
+
+        /* No Products State */
+        .no-products {
+            text-align: center;
+            padding: 60px 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            grid-column: 1 / -1;
+        }
+
+        .no-products p {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .no-products i {
+            font-size: 64px;
+            color: #8B4513;
+            margin-bottom: 20px;
+        }
+
+        /* Product Image */
+        .product-image {
+            width: 100%;
+            height: 200px;
+            overflow: hidden;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            border: 1px solid #eee;
+            position: relative;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .product-image:hover img {
+            transform: scale(1.08);
+        }
+
+        /* Discount Badge */
+        .discount-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 1;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Product Actions */
+        .product-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .action-btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.4s ease, height 0.4s ease;
+        }
+
+        .action-btn:active::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .view-btn {
+            background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+            color: white;
+            box-shadow: 0 3px 10px rgba(139, 69, 19, 0.2);
+        }
+
+        .view-btn:hover {
+            background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .edit-btn {
+            background: linear-gradient(135deg, #2e7d32 0%, #388e3c 100%);
+            color: white;
+            box-shadow: 0 3px 10px rgba(46, 125, 50, 0.2);
+        }
+
+        .edit-btn:hover {
+            background: linear-gradient(135deg, #388e3c 0%, #2e7d32 100%);
+            box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .delete-btn {
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            box-shadow: 0 3px 10px rgba(198, 40, 40, 0.2);
+        }
+
+        .delete-btn:hover {
+            background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+            box-shadow: 0 4px 15px rgba(198, 40, 40, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .action-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Form Group */
+        .form-group small {
+            display: block;
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Product Card */
+        .product-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid #eee;
+            position: relative;
+        }
+
+        .product-card.discounted {
+            border: 2px solid #c62828;
+            box-shadow: 0 4px 15px rgba(198, 40, 40, 0.1);
+        }
+
+        .product-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        /* Stock Status */
+        .stock-status {
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: Arial, sans-serif;
+        }
+
+        .stock-in-stock {
+            background-color: #E8F5E9;
+            color: #2e7d32;
+        }
+
+        .stock-low {
+            background-color: #FFF3E0;
+            color: #e65100;
+        }
+
+        .stock-out {
+            background-color: #FFEBEE;
+            color: #c62828;
+        }
+
+        /* Price Display */
+        .product-price {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .original-price {
+            font-size: 16px;
+            color: #999;
+            text-decoration: line-through;
+            font-family: Arial, sans-serif;
+        }
+
+        .discount-price {
+            font-size: 24px;
+            font-weight: 700;
+            color: #c62828;
+            font-family: 'Georgia', serif;
+        }
+
+        .regular-price {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2e7d32;
+            font-family: 'Georgia', serif;
+        }
+
+        .discount-percent {
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Modal Container */
+        .modal-container {
+            background: white;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Modal Header */
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px;
+            border-bottom: 2px solid #8B4513;
+            background: linear-gradient(135deg, #8B4513 0%, #6B3410 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+            font-family: 'Georgia', serif;
+        }
+
+        .modal-close {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: white;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            background-color: rgba(255,255,255,0.2);
+            transform: rotate(90deg);
+        }
+
+        /* Modal Body */
+        .modal-body {
+            padding: 24px;
+        }
+
+        /* Form Group */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #8B4513;
+            box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* Discount Input Group */
+        .discount-input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .discount-input-group input {
+            flex: 1;
+        }
+
+        .discount-input-group span {
+            font-weight: 600;
+            color: #666;
+            min-width: 50px;
+        }
+
+        /* File Input */
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-button {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #f9f9f9;
+            border: 2px dashed #ddd;
+            border-radius: 6px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: Arial, sans-serif;
+            font-weight: 500;
+        }
+
+        .file-input-button:hover {
+            background: #f0f0f0;
+            border-color: #8B4513;
+            color: #8B4513;
+        }
+
+        /* Current Image */
+        .current-image {
+            margin-top: 15px;
+            text-align: center;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .current-image img {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            object-fit: contain;
+        }
+
+        .current-image small {
+            display: block;
+            margin-top: 10px;
+            color: #666;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: #f9f9f9;
+            border-radius: 0 0 12px 12px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #333;
+            border: 2px solid #ddd;
+        }
+
+        .btn-secondary:hover {
+            background: #f5f5f5;
+            border-color: #8B4513;
+            color: #8B4513;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.25);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
+            box-shadow: 0 6px 20px rgba(139, 69, 19, 0.35);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(139, 69, 19, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 15px rgba(198, 40, 40, 0.25);
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+            box-shadow: 0 6px 20px rgba(198, 40, 40, 0.35);
+            transform: translateY(-2px);
+        }
+
+        .btn-danger:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(198, 40, 40, 0.3);
+        }
+
+        /* View Modal Specific */
+        .product-view-image {
+            text-align: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .product-view-image img {
+            max-width: 100%;
+            max-height: 350px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border: 2px solid #eee;
+            object-fit: contain;
+        }
+
+        /* Product Details Grid */
+        .product-details-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .detail-item {
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+
+        .detail-label {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            font-family: Arial, sans-serif;
+        }
+
+        .detail-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #8B4513;
+            font-family: 'Georgia', serif;
+        }
+
+        /* Detail Description */
+        .detail-description {
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #eee;
+        }
+
+        .detail-description .detail-label {
+            margin-bottom: 12px;
+        }
+
+        .detail-description .detail-value {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #333;
+            font-family: Arial, sans-serif;
+            font-weight: normal;
+        }
+
+        /* Quick Action Button */
+        .quick-action-btn {
+            background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.25);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quick-action-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .quick-action-btn:hover::before {
+            left: 100%;
+        }
+
+        .quick-action-btn:hover {
+            background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
+            box-shadow: 0 6px 20px rgba(139, 69, 19, 0.35);
+            transform: translateY(-2px);
+        }
+
+        .quick-action-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(139, 69, 19, 0.3);
+        }
+
+        /* Page Actions */
+        .page-actions {
+            margin-bottom: 25px;
+        }
+
+        /* Product Card Enhancements */
+        .product-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            height: 48px;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            font-family: 'Georgia', serif;
+            line-height: 1.3;
+        }
+
+        .product-category {
+            display: inline-block;
+            padding: 5px 12px;
+            background: rgba(139, 69, 19, 0.1);
+            color: #8B4513;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: Arial, sans-serif;
+        }
+
+        .product-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #eee;
+            flex-wrap: wrap;
+        }
+
+        .filter-section select,
+        .filter-section input {
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-family: Arial, sans-serif;
+        }
+
+        .filter-section select:focus,
+        .filter-section input:focus {
+            outline: none;
+            border-color: #8B4513;
+            box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
+        }
+
+        .filter-section select {
+            min-width: 200px;
+        }
+
+        .filter-section input {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        /* Products Grid */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .modal-container {
+                max-width: 95%;
+            }
+            
+            .product-details-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-section {
+                flex-direction: column;
+            }
+            
+            .filter-section select,
+            .filter-section input {
+                min-width: 100%;
+                width: 100%;
+            }
+            
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .product-actions {
+                flex-direction: column;
+            }
+            
+            .action-btn {
+                width: 100%;
+            }
+            
+            .modal-footer {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+            
+            .product-price {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .modal-header h2 {
+                font-size: 18px;
+            }
+            
+            .product-name {
+                font-size: 16px;
+                height: auto;
+            }
+            
+            .discount-price,
+            .regular-price {
+                font-size: 20px;
+            }
+        }
+        
+        /* Fix image display issues */
+        .no-image-placeholder {
+            width: 100%;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+            color: #666;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+        }
+    </style>
 </head>
 <body>
     <!-- Fixed Header -->
@@ -1150,8 +1264,6 @@ if (isset($_GET['success'])) {
                             <li><a href="../php/Admin-Customers-Page.php">Customers</a></li>
                         </ul>
                     </nav>
-
-                    
                 </div>
             </div>
         </div>
@@ -1186,6 +1298,11 @@ if (isset($_GET['success'])) {
                     <option value="hoodies">Hoodies</option>
                     <option value="jeans">Jeans</option>
                 </select>
+                <select id="discountFilter" onchange="filterProducts()">
+                    <option value="all">All Products</option>
+                    <option value="discounted">Discounted Only</option>
+                    <option value="regular">Regular Price Only</option>
+                </select>
                 <input type="text" id="searchProducts" placeholder="Search by product name..." oninput="filterProducts()">
             </div>
 
@@ -1216,14 +1333,41 @@ if (isset($_GET['success'])) {
                             $stockClass = 'stock-low';
                             $stockText = $product['stock'] . ' pcs (Low)';
                         }
+                        
+                        // Check if product is discounted
+                        $isDiscounted = $product['is_discounted'] == 1;
+                        $discountPercent = $product['discount_percent'];
+                        $discountPrice = $product['discount_price'];
+                        
+                        // Determine image path for display
+                        $displayImagePath = '';
+                        if (!empty($product['image_path'])) {
+                            if (strpos($product['image_path'], 'uploads/') === 0) {
+                                $displayImagePath = '../' . $product['image_path'];
+                            } else if (strpos($product['image_path'], '../uploads/') === 0) {
+                                $displayImagePath = $product['image_path'];
+                            } else {
+                                $displayImagePath = '../' . $product['image_path'];
+                            }
+                        }
                         ?>
                         
-                        <div class="product-card" data-category="<?php echo htmlspecialchars($product['category']); ?>" data-stock="<?php echo $stockStatus; ?>">
+                        <div class="product-card <?php echo $isDiscounted ? 'discounted' : ''; ?>" 
+                             data-category="<?php echo htmlspecialchars($product['category']); ?>" 
+                             data-stock="<?php echo $stockStatus; ?>"
+                             data-discounted="<?php echo $isDiscounted ? 'yes' : 'no'; ?>">
                             <div class="product-image" onclick="viewProduct(<?php echo $product['id']; ?>)">
-                                <?php if (!empty($product['image_path'])): ?>
-                                    <img src="../<?php echo htmlspecialchars($product['image_path']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" onerror="this.src='../images/no-image.jpg'">
+                                <?php if (!empty($displayImagePath)): ?>
+                                    <img src="<?php echo htmlspecialchars($displayImagePath); ?>" 
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'no-image-placeholder\'><i class=\'fas fa-image\'></i> Image not found</div>';">
                                 <?php else: ?>
-                                    <img src="../images/no-image.jpg" alt="No Image">
+                                    <div class="no-image-placeholder">
+                                        <i class="fas fa-image"></i> No image
+                                    </div>
+                                <?php endif; ?>
+                                <?php if ($isDiscounted): ?>
+                                    <div class="discount-badge">-<?php echo $discountPercent; ?>% OFF</div>
                                 <?php endif; ?>
                             </div>
                             <div class="product-name"><?php echo htmlspecialchars($product['name']); ?></div>
@@ -1235,7 +1379,15 @@ if (isset($_GET['success'])) {
                             <div class="product-details">
                                 <span>Stock: <span class="stock-status <?php echo $stockClass; ?>"><?php echo $stockText; ?></span></span>
                             </div>
-                            <div class="product-price">₱<?php echo number_format($product['price'], 2); ?></div>
+                            <div class="product-price">
+                                <?php if ($isDiscounted): ?>
+                                    <span class="original-price">₱<?php echo number_format($product['price'], 2); ?></span>
+                                    <span class="discount-price">₱<?php echo number_format($discountPrice, 2); ?></span>
+                                    <span class="discount-percent">-<?php echo $discountPercent; ?>%</span>
+                                <?php else: ?>
+                                    <span class="regular-price">₱<?php echo number_format($product['price'], 2); ?></span>
+                                <?php endif; ?>
+                            </div>
                             <div class="product-actions">
                                 <button class="action-btn view-btn" onclick="viewProduct(<?php echo $product['id']; ?>)">
                                     <i class="fas fa-eye"></i> View
@@ -1282,6 +1434,20 @@ if (isset($_GET['success'])) {
                         <label for="addProductPrice">Price (₱) *</label>
                         <input type="number" id="addProductPrice" name="productPrice" step="0.01" min="0.01" required 
                                value="<?php echo isset($form_data['productPrice']) ? htmlspecialchars($form_data['productPrice']) : ''; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="addProductDiscount">Discount Percent (Optional)</label>
+                        <div class="discount-input-group">
+                            <input type="number" id="addProductDiscount" name="productDiscount" step="0.01" min="0" max="100" 
+                                   value="<?php echo isset($form_data['productDiscount']) ? htmlspecialchars($form_data['productDiscount']) : '0'; ?>"
+                                   oninput="updateDiscountPreview('add')">
+                            <span>%</span>
+                        </div>
+                        <small>Enter 0 for no discount or a value between 1-100 for discounted products</small>
+                        <div id="addDiscountPreview" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px; display: none;">
+                            <small>Discount Preview:</small>
+                            <div id="addDiscountDetails"></div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="addProductStock">Stock Quantity *</label>
@@ -1339,7 +1505,21 @@ if (isset($_GET['success'])) {
                     </div>
                     <div class="form-group">
                         <label for="editProductPrice">Price (₱) *</label>
-                        <input type="number" id="editProductPrice" name="productPrice" step="0.01" min="0.01" required>
+                        <input type="number" id="editProductPrice" name="productPrice" step="0.01" min="0.01" required
+                               oninput="updateDiscountPreview('edit')">
+                    </div>
+                    <div class="form-group">
+                        <label for="editProductDiscount">Discount Percent (Optional)</label>
+                        <div class="discount-input-group">
+                            <input type="number" id="editProductDiscount" name="productDiscount" step="0.01" min="0" max="100"
+                                   oninput="updateDiscountPreview('edit')">
+                            <span>%</span>
+                        </div>
+                        <small>Enter 0 for no discount or a value between 1-100 for discounted products</small>
+                        <div id="editDiscountPreview" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px; display: none;">
+                            <small>Discount Preview:</small>
+                            <div id="editDiscountDetails"></div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="editProductStock">Stock Quantity *</label>
@@ -1357,8 +1537,8 @@ if (isset($_GET['success'])) {
                         <small id="editFileName">Keep current image</small>
                         <small style="display: block; margin-top: 5px;">Accepted formats: JPG, JPEG, PNG, GIF, WEBP (Max 5MB)</small>
                         <div class="current-image">
-                            <img id="currentProductImage" src="" alt="Current Image">
-                            <small>Current Image</small>
+                            <img id="currentProductImage" src="" alt="Current Image" style="display: none;">
+                            <small id="currentImageText" style="display: none;">Current Image</small>
                         </div>
                     </div>
                     <div class="form-group">
@@ -1383,7 +1563,11 @@ if (isset($_GET['success'])) {
             </div>
             <div class="modal-body">
                 <div class="product-view-image">
-                    <img id="viewProductImage" src="" alt="Product Image">
+                    <img id="viewProductImage" src="" alt="Product Image" style="display: none;">
+                    <div id="viewNoImagePlaceholder" class="no-image-placeholder" style="display: none;">
+                        <i class="fas fa-image"></i> No image available
+                    </div>
+                    <div id="viewDiscountBadge" class="discount-badge" style="position: absolute; top: 20px; right: 20px; display: none;"></div>
                 </div>
                 <div class="product-details-grid">
                     <div class="detail-item">
@@ -1395,8 +1579,16 @@ if (isset($_GET['success'])) {
                         <div class="detail-value" id="viewProductCategory"></div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-label">Price</div>
-                        <div class="detail-value" id="viewProductPrice"></div>
+                        <div class="detail-label">Original Price</div>
+                        <div class="detail-value" id="viewOriginalPrice"></div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Discount</div>
+                        <div class="detail-value" id="viewDiscountPercent"></div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Discounted Price</div>
+                        <div class="detail-value" id="viewDiscountPrice"></div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Stock</div>
@@ -1440,22 +1632,56 @@ if (isset($_GET['success'])) {
         // Filter Products
         function filterProducts() {
             const category = document.getElementById('categoryFilter').value;
+            const discountFilter = document.getElementById('discountFilter').value;
             const searchTerm = document.getElementById('searchProducts').value.toLowerCase();
             const cards = document.querySelectorAll('.product-card');
 
             cards.forEach(card => {
                 const cardCategory = card.getAttribute('data-category');
                 const cardName = card.querySelector('.product-name').textContent.toLowerCase();
+                const isDiscounted = card.getAttribute('data-discounted') === 'yes';
 
                 const categoryMatch = category === 'all' || cardCategory === category;
                 const searchMatch = cardName.includes(searchTerm);
+                
+                let discountMatch = true;
+                if (discountFilter === 'discounted') {
+                    discountMatch = isDiscounted;
+                } else if (discountFilter === 'regular') {
+                    discountMatch = !isDiscounted;
+                }
 
-                if (categoryMatch && searchMatch) {
+                if (categoryMatch && searchMatch && discountMatch) {
                     card.style.display = 'block';
                 } else {
                     card.style.display = 'none';
                 }
             });
+        }
+
+        // Update discount preview
+        function updateDiscountPreview(formType) {
+            const priceInput = document.getElementById(formType + 'ProductPrice');
+            const discountInput = document.getElementById(formType + 'ProductDiscount');
+            const previewDiv = document.getElementById(formType + 'DiscountPreview');
+            const detailsDiv = document.getElementById(formType + 'DiscountDetails');
+            
+            const price = parseFloat(priceInput.value) || 0;
+            const discount = parseFloat(discountInput.value) || 0;
+            
+            if (discount > 0 && price > 0) {
+                const discountAmount = price * (discount / 100);
+                const finalPrice = price - discountAmount;
+                
+                detailsDiv.innerHTML = `
+                    <div>Original Price: ₱${price.toFixed(2)}</div>
+                    <div>Discount: ${discount}% (-₱${discountAmount.toFixed(2)})</div>
+                    <div><strong>Final Price: ₱${finalPrice.toFixed(2)}</strong></div>
+                `;
+                previewDiv.style.display = 'block';
+            } else {
+                previewDiv.style.display = 'none';
+            }
         }
 
         // Modal Functions
@@ -1476,18 +1702,32 @@ if (isset($_GET['success'])) {
             document.getElementById('editProductName').value = product.name;
             document.getElementById('editProductCategory').value = product.category;
             document.getElementById('editProductPrice').value = product.price;
+            document.getElementById('editProductDiscount').value = product.discount_percent || 0;
             document.getElementById('editProductStock').value = product.stock;
             document.getElementById('editProductDescription').value = product.description || '';
             
+            // Update discount preview
+            updateDiscountPreview('edit');
+            
             // Set current image preview
             const currentImage = document.getElementById('currentProductImage');
+            const currentImageText = document.getElementById('currentImageText');
+            
             if (product.image_path) {
-                currentImage.src = '../' + product.image_path;
+                let imagePath = product.image_path;
+                if (imagePath.startsWith('uploads/')) {
+                    imagePath = '../' + imagePath;
+                }
+                currentImage.src = imagePath;
                 currentImage.style.display = 'block';
-                currentImage.parentElement.style.display = 'block';
+                currentImageText.style.display = 'block';
+                currentImage.onerror = function() {
+                    this.style.display = 'none';
+                    currentImageText.style.display = 'none';
+                };
             } else {
                 currentImage.style.display = 'none';
-                currentImage.parentElement.style.display = 'none';
+                currentImageText.style.display = 'none';
             }
             
             document.getElementById('editFileName').textContent = 'Keep current image';
@@ -1505,7 +1745,23 @@ if (isset($_GET['success'])) {
             // Set view modal content
             document.getElementById('viewProductName').textContent = product.name;
             document.getElementById('viewProductCategory').textContent = product.category.charAt(0).toUpperCase() + product.category.slice(1);
-            document.getElementById('viewProductPrice').textContent = '₱' + parseFloat(product.price).toFixed(2);
+            document.getElementById('viewOriginalPrice').textContent = '₱' + parseFloat(product.price).toFixed(2);
+            
+            // Handle discount information
+            const discountPercent = product.discount_percent || 0;
+            const isDiscounted = product.is_discounted == 1;
+            const discountPrice = product.discount_price || product.price;
+            
+            if (isDiscounted && discountPercent > 0) {
+                document.getElementById('viewDiscountPercent').innerHTML = `<span class="stock-status stock-in-stock">${discountPercent}% OFF</span>`;
+                document.getElementById('viewDiscountPrice').innerHTML = `<span style="color: #c62828; font-weight: 700;">₱${parseFloat(discountPrice).toFixed(2)}</span>`;
+                document.getElementById('viewDiscountBadge').textContent = `${discountPercent}% OFF`;
+                document.getElementById('viewDiscountBadge').style.display = 'block';
+            } else {
+                document.getElementById('viewDiscountPercent').textContent = 'No Discount';
+                document.getElementById('viewDiscountPrice').textContent = '₱' + parseFloat(product.price).toFixed(2);
+                document.getElementById('viewDiscountBadge').style.display = 'none';
+            }
             
             // Determine stock status
             let stockText = product.stock + ' pcs';
@@ -1544,11 +1800,24 @@ if (isset($_GET['success'])) {
             
             // Set image
             const productImage = document.getElementById('viewProductImage');
+            const noImagePlaceholder = document.getElementById('viewNoImagePlaceholder');
+            
             if (product.image_path) {
-                productImage.src = '../' + product.image_path;
+                let imagePath = product.image_path;
+                if (imagePath.startsWith('uploads/')) {
+                    imagePath = '../' + imagePath;
+                }
+                productImage.src = imagePath;
                 productImage.style.display = 'block';
+                noImagePlaceholder.style.display = 'none';
+                
+                productImage.onerror = function() {
+                    this.style.display = 'none';
+                    noImagePlaceholder.style.display = 'flex';
+                };
             } else {
-                productImage.src = '../images/no-image.jpg';
+                productImage.style.display = 'none';
+                noImagePlaceholder.style.display = 'flex';
             }
             
             // Store current product ID for edit button
@@ -1600,11 +1869,18 @@ if (isset($_GET['success'])) {
         // Form validation for add form
         document.getElementById('addProductForm').addEventListener('submit', function(e) {
             const price = document.getElementById('addProductPrice').value;
+            const discount = document.getElementById('addProductDiscount').value;
             const stock = document.getElementById('addProductStock').value;
             const image = document.getElementById('addProductImage').files[0];
             
             if (parseFloat(price) <= 0) {
                 alert('Price must be greater than 0');
+                e.preventDefault();
+                return;
+            }
+            
+            if (parseFloat(discount) < 0 || parseFloat(discount) > 100) {
+                alert('Discount must be between 0 and 100 percent');
                 e.preventDefault();
                 return;
             }
@@ -1640,11 +1916,18 @@ if (isset($_GET['success'])) {
         // Form validation for edit form
         document.getElementById('editProductForm').addEventListener('submit', function(e) {
             const price = document.getElementById('editProductPrice').value;
+            const discount = document.getElementById('editProductDiscount').value;
             const stock = document.getElementById('editProductStock').value;
             const image = document.getElementById('editProductImage').files[0];
             
             if (parseFloat(price) <= 0) {
                 alert('Price must be greater than 0');
+                e.preventDefault();
+                return;
+            }
+            
+            if (parseFloat(discount) < 0 || parseFloat(discount) > 100) {
+                alert('Discount must be between 0 and 100 percent');
                 e.preventDefault();
                 return;
             }
@@ -1690,6 +1973,15 @@ if (isset($_GET['success'])) {
                 if (document.getElementById('editModal').style.display === 'flex') closeEditModal();
                 if (document.getElementById('viewModal').style.display === 'flex') closeViewModal();
             }
+        });
+        
+        // Initialize discount preview for add form
+        document.getElementById('addProductPrice').addEventListener('input', function() {
+            updateDiscountPreview('add');
+        });
+        
+        document.getElementById('addProductDiscount').addEventListener('input', function() {
+            updateDiscountPreview('add');
         });
     </script>
 </body>

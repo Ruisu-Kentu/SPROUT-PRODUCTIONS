@@ -1,345 +1,540 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+    header("Location: Login-Form.php");
+    exit();
+}
+
+// Check if user is admin
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
+    header("Location: Admin-Dashboard.php");
+    exit();
+}
+
+// Check session timeout (30 minutes)
+if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
+    session_unset();
+    session_destroy();
+    header("Location: Login-Form.php?error=session_expired");
+    exit();
+}
+
+$_SESSION['login_time'] = time();
+
+// Database configuration
+$host = "localhost";
+$username = "root";
+$password = "";
+$dbname = "sprout_productions";
+
+$conn = new mysqli($host, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);  
+}
+
+// Get cart count
+$userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+$cartCount = 0;
+
+if ($userId) {
+    $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+    $stmt = $conn->prepare($countQuery);
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $countResult = $stmt->get_result();
+    $countData = $countResult->fetch_assoc();
+    $cartCount = $countData['total_items'] ?? 0;
+    $stmt->close();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sprout Productions - Latest Collections</title>
-    <link rel="stylesheet" href="../css/new-arriv-sec.css">
+    <title>Sprout Productions - Best Sellers</title>
+    <link rel="stylesheet" href="../css/land-pag-sec.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
+    <style>
+        /* Additional styles for Best Sellers page */
+        .page-header {
+            text-align: center;
+            padding: 40px 20px 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .page-header h1 {
+            font-family: 'Georgia', serif;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        
+        .breadcrumb {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
+        }
+        
+        .breadcrumb a {
+            color: #666;
+            text-decoration: none;
+        }
+        
+        .breadcrumb a:hover {
+            color: #000;
+        }
+        
+        /* Product grid for Best Sellers - 3 columns */
+        .products-section {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 40px 0 60px;
+        }
+        
+        .pagination button,
+        .pagination a {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ddd;
+            background-color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s ease;
+        }
+        
+        .pagination button:hover,
+        .pagination a:hover {
+            background-color: #f5f5f5;
+            border-color: #000;
+        }
+        
+        .pagination .active {
+            background-color: #000;
+            color: #fff;
+            border-color: #000;
+        }
+        
+        .pagination .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination .disabled:hover {
+            background-color: #fff;
+            border-color: #ddd;
+        }
+        
+        /* Add to cart button */
+        .add-to-cart-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        
+        .add-to-cart-btn:hover {
+            background: #333;
+        }
+        
+        .add-to-cart-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        /* Product image container */
+        .product-image {
+            position: relative;
+            height: 300px;
+            overflow: hidden;
+        }
+        
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+        
+        .product-card:hover .product-image img {
+            transform: scale(1.05);
+        }
+        
+        /* Star ratings */
+        .star-filled {
+            width: 16px;
+            height: 16px;
+            background-color: #ffd700;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+        
+        .star-empty {
+            width: 16px;
+            height: 16px;
+            background-color: #e0e0e0;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+        
+        /* Price styling */
+        .original-price {
+            font-size: 14px;
+            color: #999;
+            text-decoration: line-through;
+            margin-left: 8px;
+        }
+        
+        .discount-badge {
+            background-color: #ffe0e0;
+            color: #ff4444;
+            padding: 2px 8px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+    </style>
 </head>
 <body>
-    <!-- Header -->
-     <div class="header-top">
-        Sign up and get 20% off your first order.    <a href="../php/Register-Form.php">Sign Up Now</a>
-        <img src="../images/close_logo.png" alt="">
-    </div>
-
-  <header class="header-main">
-        <div class="logo">
-            <a href="../php/Landing-Page-Section.php">SPROUT PRODUCTIONS</a>
-            <img src="../images/sprout logo bg-removed 3.png" alt="">
+    <!-- Fixed Header -->
+    <header class="sticky-header">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="container">
+                <div class="top-bar-content">
+                    <div class="user-info-with-icon">
+                        <img src="../images/user_logo.png" alt="User" class="user-icon-small">
+                        <span class="welcome-text">Welcome,</span>
+                        <span class="user-email"><?php echo htmlspecialchars($_SESSION['email']); ?> (<?php echo $_SESSION['role']; ?>)</span>
+                    </div>
+                    <div class="top-bar-actions">
+                        <a href="logout.php" class="logout-link-no-icon">Logout</a>
+                        <img src="../images/close_logo.png" alt="Close" class="close-icon">
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <nav>
-            <ul class="nav-menu">
-                <li><a href="../php/New-Arrival-Section.php">New Arrivals</a></li>
-                <li><a href="../php/Best-Sellers-Section.php">Best Sellers</a></li>
-                <li><a href="../php/Limited-Time-Offers.php">Limited-Time Offers</a></li>
-            </ul>
-        </nav>
+        <!-- Main Navigation -->
+        <div class="main-navigation">
+            <div class="container">
+                <div class="nav-content">
+                    <div class="logo">
+                        <a href="Landing-Page-Section.php" class="logo-link">
+                            <img src="../images/sprout logo bg-removed 3.png" alt="Sprout Logo" class="logo-img">
+                            <span class="logo-text">SPROUT PRODUCTIONS</span>
+                        </a>
+                    </div>
 
-        <div class="header-right">
-            <div class="search-bar">
-                <img src="../images/Search_logo.png" alt="">
-                <input type="text" placeholder="Search for products...">
-            </div>
-            <div class="header-icons">
-                <div class="icon-placeholder">
-                    <img src="../images/cart_logo.png" alt="">
-                </div>
-                <div class="icon-placeholder">
-                    <img src="../images/user_logo.png" alt="">
+                    <nav class="center-nav">
+                        <ul class="nav-menu">
+                            <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
+                            <li><a href="Best-Sellers-Section.php" class="active">Best Sellers</a></li>
+                            <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
+                            <li><a href="my-orders.php">My Orders</a></li>
+                        </ul>
+                    </nav>
+
+                    <div class="right-nav">
+                        <div class="action-icons">
+                            <a href="cart-section.php" class="icon-link">
+                                <img src="../images/cart_logo.png" alt="Cart" class="nav-icon">
+                                <span id="cart-badge" class="icon-badge"><?php echo $cartCount; ?></span>
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <div class="section-label">Best Sellers Section</div>
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1>BEST SELLERS</h1>
+        <div class="breadcrumb">
+            <a href="Landing-Page-Section.php">Home</a> / <span>Best Sellers</span>
+        </div>
+    </div>
 
-    <main class="container">
-        <h1 class="section-title">BEST SELLERS</h1>
-
-        <div class="product-grid">
+    <!-- Products Section -->
+    <section class="products-section">
+        <div class="products-grid">
             <!-- Product 1 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/Gradient.png" alt="">
+                    <img src="../images/new-arrival-section/Gradient.png" alt="Gradient Graphic T-shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Gradient Graphic T-shirt</div>
+                    <h3 class="product-name">Gradient Graphic T-shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star half"></div>
-                            <div class="star empty"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">3.5/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱145</span>
-                            <span class="price-original">₱242</span>
-                            <span class="discount-badge">-20%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                            <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱145</span>
+                        <span class="original-price">₱242</span>
+                        <span class="discount-badge">-20%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 2 -->
             <div class="product-card">
                 <div class="product-image">
-                     <img src="../images/new-arrival-section/Polo with Tipping Details.png" alt="">
+                    <img src="../images/new-arrival-section/Polo with Tipping Details.png" alt="Polo with Tipping Details">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Polo with Tipping Details</div>
+                    <h3 class="product-name">Polo with Tipping Details</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star half"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">4.5/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱180</span>
-                            <span class="price-original">₱242</span>
-                            <span class="discount-badge">-30%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                              <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱180</span>
+                        <span class="original-price">₱242</span>
+                        <span class="discount-badge">-30%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 3 -->
             <div class="product-card">
-                 <div class="product-image">
-                        <img src="../images/new-arrival-section/Black Striped T-shirt.png" alt="">
+                <div class="product-image">
+                    <img src="../images/new-arrival-section/Black Striped T-shirt.png" alt="Black Striped T-shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Black Striped T-shirt</div>
+                    <h3 class="product-name">Black Striped T-shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
                         </div>
                         <span class="rating-count">5.0/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱120</span>
-                            <span class="price-original">₱150</span>
-                            <span class="discount-badge">-30%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                            <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱120</span>
+                        <span class="original-price">₱150</span>
+                        <span class="discount-badge">-30%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 4 -->
             <div class="product-card">
-                    <div class="product-image">
-                        <img src="../images/new-arrival-section/SkinnyFitJeans.png" alt="">
-                    </div>
+                <div class="product-image">
+                    <img src="../images/new-arrival-section/SkinnyFitJeans.png" alt="Skinny Fit Jeans">
+                </div>
                 <div class="product-info">
-                    <div class="product-name">Skinny Fit Jeans</div>
+                    <h3 class="product-name">Skinny Fit Jeans</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star half"></div>
-                            <div class="star empty"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">3.5/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱240</span>
-                            <span class="price-original">₱260</span>
-                            <span class="discount-badge">-20%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                            <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱240</span>
+                        <span class="original-price">₱260</span>
+                        <span class="discount-badge">-20%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 5 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/CHECKERED SHIRT.png" alt="">
+                    <img src="../images/new-arrival-section/CHECKERED SHIRT.png" alt="Checkered Shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Checkered Shirt</div>
+                    <h3 class="product-name">Checkered Shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star half"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">4.5/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱180</span>
-                            <span class="price-original">₱242</span>
-                            <span class="discount-badge">-20%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                           <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱180</span>
+                        <span class="original-price">₱242</span>
+                        <span class="discount-badge">-20%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 6 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/SLEEVE STRIPED T-SHIRT.png" alt="">
+                    <img src="../images/new-arrival-section/SLEEVE STRIPED T-SHIRT.png" alt="Sleeve Striped T-shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Sleeve Striped T-shirt</div>
+                    <h3 class="product-name">Sleeve Striped T-shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star half"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">4.5/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱130</span>
-                            <span class="price-original">₱160</span>
-                            <span class="discount-badge">-30%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                              <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱130</span>
+                        <span class="original-price">₱160</span>
+                        <span class="discount-badge">-30%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 7 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/VERTICAL STRIPPED.png" alt="">
+                    <img src="../images/new-arrival-section/VERTICAL STRIPPED.png" alt="Vertical Striped Shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Vertical Striped Shirt</div>
+                    <h3 class="product-name">Vertical Striped Shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
                         </div>
                         <span class="rating-count">5.0/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱212</span>
-                            <span class="price-original">₱232</span>
-                            <span class="discount-badge">-20%</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                             <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱212</span>
+                        <span class="original-price">₱232</span>
+                        <span class="discount-badge">-20%</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 8 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/COURAGE GRAPHIC T-SHIRT.png" alt="">
+                    <img src="../images/new-arrival-section/COURAGE GRAPHIC T-SHIRT.png" alt="Courage Graphic T-shirt">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Courage Graphic T-shirt</div>
+                    <h3 class="product-name">Courage Graphic T-shirt</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star empty"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">4.0/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱145</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                             <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱145</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
 
             <!-- Product 9 -->
             <div class="product-card">
                 <div class="product-image">
-                    <img src="../images/new-arrival-section/LOOSE FIT BERMUDA.png" alt="">
+                    <img src="../images/new-arrival-section/LOOSE FIT BERMUDA.png" alt="Loose Fit Bermuda Shorts">
                 </div>
                 <div class="product-info">
-                    <div class="product-name">Loose Fit Bermuda Shorts</div>
+                    <h3 class="product-name">Loose Fit Bermuda Shorts</h3>
                     <div class="product-rating">
                         <div class="stars">
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star"></div>
-                            <div class="star empty"></div>
-                            <div class="star empty"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-filled"></div>
+                            <div class="star-empty"></div>
+                            <div class="star-empty"></div>
                         </div>
                         <span class="rating-count">3.0/5</span>
                     </div>
-                    <div class="product-footer">
-                        <div class="product-price">
-                            <span class="price-current">₱80</span>
-                        </div>
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                             <a href="#">View More</a>
-                        </button>
+                    <div class="product-price">
+                        <span class="current-price">₱80</span>
                     </div>
+                    <button class="add-to-cart-btn">Add to Cart</button>
                 </div>
             </div>
         </div>
 
         <!-- Pagination -->
         <div class="pagination">
-            <button>←</button>
-            <span class="active">1</span>
-            <span>2</span>
-            <span>3</span>
+            <button class="disabled">←</button>
+            <a href="#" class="active">1</a>
+            <a href="#">2</a>
+            <a href="#">3</a>
             <span>...</span>
-            <span>8</span>
-            <span>9</span>
-            <span>10</span>
+            <a href="#">8</a>
+            <a href="#">9</a>
+            <a href="#">10</a>
             <button>→</button>
         </div>
-    </main>
+    </section>
 
     <!-- Footer -->
     <footer class="footer">
@@ -395,3 +590,4 @@
     </footer>
 </body>
 </html>
+<?php $conn->close(); ?>

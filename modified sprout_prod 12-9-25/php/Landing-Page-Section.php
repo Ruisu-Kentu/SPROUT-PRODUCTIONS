@@ -335,10 +335,27 @@ if ($userId) {
         .product-image {
             position: relative;
             overflow: hidden;
+            height: 250px;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .product-image a {
+            display: block;
+            width: 100%;
+            height: 100%;
+            text-decoration: none;
+            color: inherit;
         }
         
         .product-image img {
             transition: transform 0.3s ease;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
         
         .product-card:hover .product-image img {
@@ -355,6 +372,7 @@ if ($userId) {
             border-radius: 4px;
             font-size: 12px;
             font-weight: bold;
+            z-index: 2;
         }
         
         .out-of-stock {
@@ -392,6 +410,139 @@ if ($userId) {
         .icon-badge.updated {
             transform: scale(1.2);
             background-color: #27ae60;
+        }
+        
+        /* Fix for broken image display */
+        .default-product-image {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* Discount badge for landing page */
+        .discount-badge-landing {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 2;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+        
+        .price-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+        }
+        
+        .original-price {
+            font-size: 14px;
+            color: #999;
+            text-decoration: line-through;
+        }
+        
+        .current-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: #000;
+        }
+        
+        /* View More Button */
+        .view-more-btn {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #f5f5f5;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .view-more-btn:hover {
+            background: #e9e9e9;
+            border-color: #999;
+        }
+        
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        .notification-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .notification-error {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            margin-left: 15px;
+            font-size: 16px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .product-name-link {
+            color: #333;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .product-name-link:hover {
+            color: #000;
         }
     </style>
 </head>
@@ -434,7 +585,7 @@ if ($userId) {
                         <ul class="nav-menu">
                             <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
                             <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
-                            <li><a href="Limited-Time-Offers.php">Limited-Time Offers</a></li>
+                            <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
                             <li><a href="my-orders.php">My Orders</a></li>
                         </ul>
                     </nav>
@@ -461,13 +612,51 @@ if ($userId) {
         <div class="products-grid">
             <?php if ($newArrivalsResult && $newArrivalsResult->num_rows > 0): ?>
                 <?php while($product = $newArrivalsResult->fetch_assoc()): ?>
+                    <?php
+                    $isDiscounted = $product['is_discounted'] == 1;
+                    $discountPercent = $product['discount_percent'];
+                    $originalPrice = $product['price'];
+                    $discountPrice = $originalPrice * (1 - $discountPercent / 100);
+                    ?>
                     <div class="product-card">
                         <div class="product-image">
-                            <?php if (!empty($product['image_path'])): ?>
-                                <img src="<?php echo htmlspecialchars($product['image_path']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
-                            <?php else: ?>
-                                <img src="../images/default-product.jpg" alt="Default Product Image">
+                            <?php 
+                            // Check if image path exists and is valid
+                            $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : '';
+                            
+                            if (!empty($imagePath)) {
+                                // Check if path starts with 'uploads/' or '../uploads/'
+                                if (strpos($imagePath, 'uploads/') === 0) {
+                                    // It's already a relative path from root
+                                    $displayPath = '../' . $imagePath;
+                                } else if (strpos($imagePath, '../uploads/') === 0) {
+                                    // It starts with ../uploads/
+                                    $displayPath = $imagePath;
+                                } else if (strpos($imagePath, 'http') === 0) {
+                                    // It's an absolute URL
+                                    $displayPath = $imagePath;
+                                } else {
+                                    // It's a relative path, prepend ../
+                                    $displayPath = '../' . $imagePath;
+                                }
+                                ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <img src="<?php echo $displayPath; ?>" 
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
+                                </a>
+                            <?php } else { ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <div class="default-product-image">
+                                        <i class="fas fa-image"></i> No image
+                                    </div>
+                                </a>
+                            <?php } ?>
+                            
+                            <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                <div class="discount-badge-landing">-<?php echo $discountPercent; ?>% OFF</div>
                             <?php endif; ?>
+                            
                             <?php if ($product['stock'] > 0): ?>
                                 <span class="stock-badge">In Stock (<?php echo $product['stock']; ?>)</span>
                             <?php else: ?>
@@ -475,28 +664,32 @@ if ($userId) {
                             <?php endif; ?>
                         </div>
                         <div class="product-info">
-                            <h3 class="product-name"><?php echo htmlspecialchars($product['name']); ?></h3>
-                            <div class="product-rating">
-                                <!-- You can add rating system later -->
-                                <div class="stars">
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-empty"></div>
-                                </div>
-                                <span class="rating-count">0/5</span>
-                            </div>
-                            <div class="product-price">
-                                <span class="current-price">$<?php echo number_format($product['price'], 2); ?></span>
+                            <h3>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" class="product-name-link">
+                                    <?php echo htmlspecialchars($product['name']); ?>
+                                </a>
+                            </h3>
+                            <div class="price-container">
+                                <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                    <span class="original-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">$<?php echo number_format($discountPrice, 2); ?></span>
+                                <?php else: ?>
+                                    <span class="current-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                <?php endif; ?>
                             </div>
                             <button class="add-to-cart-btn" 
                                     data-product-id="<?php echo $product['id']; ?>"
                                     data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
-                                    data-product-price="<?php echo $product['price']; ?>"
+                                    data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
                                     <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
                                 <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
                             </button>
+                            <a href="product-details.php?id=<?php echo $product['id']; ?>">
+                                <button class="view-more-btn">
+                                    <i class="fas fa-eye"></i>
+                                    <span>View Details</span>
+                                </button>
+                            </a>
                         </div>
                     </div>
                 <?php endwhile; ?>
@@ -520,13 +713,51 @@ if ($userId) {
         <div class="products-grid">
             <?php if ($bestSellersResult && $bestSellersResult->num_rows > 0): ?>
                 <?php while($product = $bestSellersResult->fetch_assoc()): ?>
+                    <?php
+                    $isDiscounted = $product['is_discounted'] == 1;
+                    $discountPercent = $product['discount_percent'];
+                    $originalPrice = $product['price'];
+                    $discountPrice = $originalPrice * (1 - $discountPercent / 100);
+                    ?>
                     <div class="product-card">
                         <div class="product-image">
-                            <?php if (!empty($product['image_path'])): ?>
-                                <img src="<?php echo htmlspecialchars($product['image_path']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
-                            <?php else: ?>
-                                <img src="../images/default-product.jpg" alt="Default Product Image">
+                            <?php 
+                            // Check if image path exists and is valid
+                            $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : '';
+                            
+                            if (!empty($imagePath)) {
+                                // Check if path starts with 'uploads/' or '../uploads/'
+                                if (strpos($imagePath, 'uploads/') === 0) {
+                                    // It's already a relative path from root
+                                    $displayPath = '../' . $imagePath;
+                                } else if (strpos($imagePath, '../uploads/') === 0) {
+                                    // It starts with ../uploads/
+                                    $displayPath = $imagePath;
+                                } else if (strpos($imagePath, 'http') === 0) {
+                                    // It's an absolute URL
+                                    $displayPath = $imagePath;
+                                } else {
+                                    // It's a relative path, prepend ../
+                                    $displayPath = '../' . $imagePath;
+                                }
+                                ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <img src="<?php echo $displayPath; ?>" 
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
+                                </a>
+                            <?php } else { ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <div class="default-product-image">
+                                        <i class="fas fa-image"></i> No image
+                                    </div>
+                                </a>
+                            <?php } ?>
+                            
+                            <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                <div class="discount-badge-landing">-<?php echo $discountPercent; ?>% OFF</div>
                             <?php endif; ?>
+                            
                             <?php if ($product['stock'] > 0): ?>
                                 <span class="stock-badge">In Stock (<?php echo $product['stock']; ?>)</span>
                             <?php else: ?>
@@ -534,28 +765,32 @@ if ($userId) {
                             <?php endif; ?>
                         </div>
                         <div class="product-info">
-                            <h3 class="product-name"><?php echo htmlspecialchars($product['name']); ?></h3>
-                            <div class="product-rating">
-                                <!-- You can add rating system later -->
-                                <div class="stars">
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-filled"></div>
-                                    <div class="star-empty"></div>
-                                </div>
-                                <span class="rating-count">0/5</span>
-                            </div>
-                            <div class="product-price">
-                                <span class="current-price">$<?php echo number_format($product['price'], 2); ?></span>
+                            <h3>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" class="product-name-link">
+                                    <?php echo htmlspecialchars($product['name']); ?>
+                                </a>
+                            </h3>
+                            <div class="price-container">
+                                <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                    <span class="original-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">$<?php echo number_format($discountPrice, 2); ?></span>
+                                <?php else: ?>
+                                    <span class="current-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                <?php endif; ?>
                             </div>
                             <button class="add-to-cart-btn" 
                                     data-product-id="<?php echo $product['id']; ?>"
                                     data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
-                                    data-product-price="<?php echo $product['price']; ?>"
+                                    data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
                                     <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
                                 <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
                             </button>
+                            <a href="product-details.php?id=<?php echo $product['id']; ?>">
+                                <button class="view-more-btn">
+                                    <i class="fas fa-eye"></i>
+                                    <span>View Details</span>
+                                </button>
+                            </a>
                         </div>
                     </div>
                 <?php endwhile; ?>
@@ -694,7 +929,6 @@ if ($userId) {
         
         // Function to update cart badge
         function updateCartBadge() {
-            // Fetch cart count from server
             fetch('landing-page-section.php', {
                 method: 'POST',
                 headers: {
@@ -706,7 +940,6 @@ if ($userId) {
             .then(data => {
                 if (data.success) {
                     cartBadge.textContent = data.item_count;
-                    // Add animation
                     cartBadge.classList.add('updated');
                     setTimeout(() => {
                         cartBadge.classList.remove('updated');
@@ -719,20 +952,19 @@ if ($userId) {
         }
         
         addToCartButtons.forEach(button => {
-            button.addEventListener('click', function() {
+            button.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent triggering the image click
                 if (this.disabled) return;
                 
                 const productId = this.dataset.productId;
                 const productName = this.dataset.productName;
                 const productPrice = this.dataset.productPrice;
                 
-                // Add to cart
-                addToCart(productId, productName, productPrice);
+                addToCart(productId, productName, productPrice, this);
             });
         });
         
-        function addToCart(productId, productName, productPrice) {
-            // Send to server via AJAX
+        function addToCart(productId, productName, productPrice, button = null) {
             fetch('landing-page-section.php', {
                 method: 'POST',
                 headers: {
@@ -743,15 +975,13 @@ if ($userId) {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Update cart badge
                     cartBadge.textContent = data.item_count;
                     cartBadge.classList.add('updated');
                     setTimeout(() => {
                         cartBadge.classList.remove('updated');
                     }, 300);
                     
-                    // Visual feedback on button
-                    const button = document.querySelector(`[data-product-id="${productId}"]`);
+                    // Update button on card
                     if (button) {
                         const originalText = button.textContent;
                         const originalBackground = button.style.background;
@@ -765,14 +995,48 @@ if ($userId) {
                             button.style.color = '';
                         }, 2000);
                     }
+                    
+                    // Show success notification
+                    showNotification('Product added to cart successfully!', 'success');
                 } else {
-                    alert(data.message || 'Error adding to cart');
+                    showNotification(data.message || 'Error adding to cart', 'error');
                 }
             })
             .catch(error => {
                 console.error('Error adding to cart:', error);
-                alert('Error adding to cart. Please try again.');
+                showNotification('Error adding to cart. Please try again.', 'error');
             });
+        }
+        
+        // Notification function
+        function showNotification(message, type = 'success') {
+            // Remove existing notification
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
         }
         
         // Initialize cart badge on page load

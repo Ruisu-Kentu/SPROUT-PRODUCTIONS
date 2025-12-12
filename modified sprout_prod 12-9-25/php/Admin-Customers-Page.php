@@ -1,3 +1,29 @@
+<?php
+// Start session and authentication check
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+    echo '<script>
+        alert("⚠️ ADMIN ACCESS REQUIRED\\n\\nPlease log in as an administrator first!");
+        window.location.href = "Login-Form.php";
+    </script>';
+    exit();
+}
+
+// Check if user is admin
+if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nYou don\'t have administrator privileges!");
+        window.location.href = "Landing-Page-Section.php";
+    </script>';
+    exit();
+}
+
+// Update session time on activity
+$_SESSION['login_time'] = time();
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>

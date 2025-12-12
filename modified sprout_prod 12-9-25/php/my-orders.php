@@ -163,7 +163,7 @@ if ($userId) {
                         <ul class="nav-menu">
                             <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
                             <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
-                            <li><a href="Limited-Time-Offers.php">Limited-Time Offers</a></li>
+                            <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
                             <li><a href="my-orders.php" class="active">My Orders</a></li>
                         </ul>
                     </nav>

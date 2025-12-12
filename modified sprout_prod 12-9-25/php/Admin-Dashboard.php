@@ -4,21 +4,19 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header("Location: Login-Form.php");
+    echo '<script>
+        alert("⚠️ ADMIN ACCESS REQUIRED\\n\\nPlease log in as an administrator first!");
+        window.location.href = "Login-Form.php";
+    </script>';
     exit();
 }
 
 // Check if user is admin
 if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
-    header("Location: Landing-Page-Section.php");
-    exit();
-}
-
-// Check session timeout (30 minutes)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
-    session_unset();
-    session_destroy();
-    header("Location: Login-Form.php?error=session_expired");
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nYou don\'t have administrator privileges!");
+        window.location.href = "Landing-Page-Section.php";
+    </script>';
     exit();
 }
 
@@ -128,9 +126,67 @@ $_SESSION['login_time'] = time();
             color: #f44336;
         }
         
+        /* Chart Filter Styles */
+        .chart-filter {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        .filter-label {
+            font-weight: 600;
+            color: #8B4513;
+            font-family: 'Georgia', serif;
+        }
+        
+        .filter-btn {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            color: #555;
+        }
+        
+        .filter-btn:hover {
+            background: #e8e8e8;
+            border-color: #8B4513;
+        }
+        
+        .filter-btn.active {
+            background: #8B4513;
+            color: white;
+            border-color: #8B4513;
+        }
+        
+        .filter-group {
+            display: flex;
+            gap: 5px;
+            background: #f9f9f9;
+            padding: 5px;
+            border-radius: 25px;
+        }
+        
+        .chart-filter-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
         @media (max-width: 1024px) {
             .charts-grid {
                 grid-template-columns: 1fr;
+            }
+            
+            .chart-filter-section {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
             }
         }
         
@@ -145,6 +201,10 @@ $_SESSION['login_time'] = time();
             
             .chart-card {
                 padding: 20px;
+            }
+            
+            .filter-group {
+                flex-wrap: wrap;
             }
         }
     </style>
@@ -191,8 +251,6 @@ $_SESSION['login_time'] = time();
                             <li><a href="../php/Admin-Customers-Page.php">Customers</a></li>
                         </ul>
                     </nav>
-
-                
                 </div>
             </div>
         </div>
@@ -201,7 +259,19 @@ $_SESSION['login_time'] = time();
     <!-- Main Content -->
     <main class="main-content">
         <div class="container">
-            <h1 class="dashboard-title" id="dashboardOverview">Dashboard Overview</h1>
+            <div class="chart-filter-section">
+                <h1 class="dashboard-title" id="dashboardOverview">Dashboard Overview</h1>
+                
+                <!-- Chart Filter -->
+                <div class="chart-filter">
+                    <span class="filter-label">View by:</span>
+                    <div class="filter-group">
+                        <button class="filter-btn active" data-filter="week">Week</button>
+                        <button class="filter-btn" data-filter="month">Month</button>
+                        <button class="filter-btn" data-filter="year">Year</button>
+                    </div>
+                </div>
+            </div>
 
             <!-- Charts Grid -->
             <div class="charts-grid">
@@ -209,13 +279,13 @@ $_SESSION['login_time'] = time();
                 <div class="chart-card">
                     <div class="chart-header">
                         <h3 class="chart-title">Total Orders</h3>
-                        <div class="chart-value">1,247</div>
+                        <div class="chart-value" id="ordersValue">1,247</div>
                     </div>
                     <div class="chart-container">
                         <canvas id="ordersChart"></canvas>
                     </div>
                     <div class="chart-change">
-                        <span class="change-up">↑ 12% from last month</span>
+                        <span class="change-up" id="ordersChange">↑ 12% from last period</span>
                     </div>
                 </div>
 
@@ -223,41 +293,41 @@ $_SESSION['login_time'] = time();
                 <div class="chart-card">
                     <div class="chart-header">
                         <h3 class="chart-title">Revenue</h3>
-                        <div class="chart-value">$18,450</div>
+                        <div class="chart-value" id="revenueValue">$18,450</div>
                     </div>
                     <div class="chart-container">
                         <canvas id="revenueChart"></canvas>
                     </div>
                     <div class="chart-change">
-                        <span class="change-up">↑ 8% from last month</span>
+                        <span class="change-up" id="revenueChange">↑ 8% from last period</span>
                     </div>
                 </div>
 
-                <!-- New Customers Chart -->
+                <!-- Customers Chart -->
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h3 class="chart-title">New Customers</h3>
-                        <div class="chart-value">342</div>
+                        <h3 class="chart-title">Customers</h3>
+                        <div class="chart-value" id="customersValue">905</div>
                     </div>
                     <div class="chart-container">
                         <canvas id="customersChart"></canvas>
                     </div>
                     <div class="chart-change">
-                        <span class="change-up">↑ 15% from last month</span>
+                        <span class="change-up" id="customersChange">↑ 15% from last period</span>
                     </div>
                 </div>
 
-                <!-- Active Products Chart -->
+                <!-- Sold Products Chart -->
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h3 class="chart-title">Active Products</h3>
-                        <div class="chart-value">89</div>
+                        <h3 class="chart-title">Sold Products</h3>
+                        <div class="chart-value" id="productsValue">1,128</div>
                     </div>
                     <div class="chart-container">
                         <canvas id="productsChart"></canvas>
                     </div>
                     <div class="chart-change">
-                        <span class="change-up">↑ 3% from last month</span>
+                        <span class="change-up" id="productsChange">↑ 3% from last period</span>
                     </div>
                 </div>
             </div>
@@ -432,30 +502,95 @@ $_SESSION['login_time'] = time();
             window.location.href = `../php/Admin-Products-Page.php?edit=${productId}`;
         }
 
-        // Chart configurations
-        document.addEventListener('DOMContentLoaded', function() {
-            // Chart color scheme
-            const chartColors = {
-                primary: '#8B4513',      // Brown
-                secondary: '#6B3410',    // Darker brown
-                accent: '#2e7d32',       // Green
-                background: '#f9f9f9',
-                grid: '#e0e0e0',
-                text: '#333333'
-            };
+        // Data for different time periods
+        const chartData = {
+            week: {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                orders: [165, 180, 192, 210, 195, 205, 100],
+                revenue: [2450, 2750, 3120, 2980, 2650, 2890, 1500],
+                customers: [85, 92, 105, 98, 110, 115, 60],
+                products: [210, 195, 220, 205, 215, 225, 110],
+                totals: {
+                    orders: 1247,
+                    revenue: 18450,
+                    customers: 905,
+                    products: 1128
+                },
+                changes: {
+                    orders: '↑ 12% from last week',
+                    revenue: '↑ 8% from last week',
+                    customers: '↑ 15% from last week',
+                    products: '↑ 3% from last week'
+                }
+            },
+            month: {
+                labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                orders: [520, 580, 620, 710],
+                revenue: [7800, 8200, 8650, 9200],
+                customers: [280, 310, 325, 340],
+                products: [620, 680, 720, 780],
+                totals: {
+                    orders: 2430,
+                    revenue: 33850,
+                    customers: 1255,
+                    products: 2800
+                },
+                changes: {
+                    orders: '↑ 8% from last month',
+                    revenue: '↑ 12% from last month',
+                    customers: '↑ 18% from last month',
+                    products: '↑ 5% from last month'
+                }
+            },
+            year: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                orders: [980, 1020, 1100, 1150, 1200, 1247, 1300, 1350, 1400, 1450, 1500, 1550],
+                revenue: [14500, 15200, 16800, 17450, 18000, 18450, 19000, 19500, 20000, 20500, 21000, 21500],
+                customers: [720, 780, 820, 850, 880, 905, 930, 950, 980, 1000, 1020, 1040],
+                products: [950, 980, 1020, 1050, 1100, 1128, 1150, 1180, 1200, 1220, 1240, 1260],
+                totals: {
+                    orders: 15647,
+                    revenue: 221450,
+                    customers: 10835,
+                    products: 13478
+                },
+                changes: {
+                    orders: '↑ 15% from last year',
+                    revenue: '↑ 22% from last year',
+                    customers: '↑ 28% from last year',
+                    products: '↑ 10% from last year'
+                }
+            }
+        };
 
-            // Monthly data for all charts
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        // Chart instances
+        let ordersChart, revenueChart, customersChart, productsChart;
+        let currentFilter = 'week';
+
+        // Chart color scheme
+        const chartColors = {
+            primary: '#8B4513',
+            secondary: '#6B3410',
+            accent: '#2e7d32',
+            background: '#f9f9f9',
+            grid: '#e0e0e0',
+            text: '#333333'
+        };
+
+        // Initialize charts
+        function initializeCharts() {
+            const data = chartData[currentFilter];
             
-            // Total Orders Chart
+            // Orders Chart
             const ordersCtx = document.getElementById('ordersChart').getContext('2d');
-            const ordersChart = new Chart(ordersCtx, {
+            if (ordersChart) ordersChart.destroy();
+            ordersChart = new Chart(ordersCtx, {
                 type: 'line',
                 data: {
-                    labels: months.slice(0, 7), // Last 7 months
+                    labels: data.labels,
                     datasets: [{
                         label: 'Orders',
-                        data: [980, 1020, 1100, 1150, 1200, 1247, 1300],
+                        data: data.orders,
                         borderColor: chartColors.primary,
                         backgroundColor: chartColors.primary + '20',
                         borderWidth: 3,
@@ -468,61 +603,19 @@ $_SESSION['login_time'] = time();
                         pointHoverRadius: 7
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            titleColor: '#ffffff',
-                            bodyColor: '#ffffff',
-                            padding: 12
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            grid: {
-                                color: chartColors.grid,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: chartColors.grid,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
-                                }
-                            }
-                        }
-                    }
-                }
+                options: getChartOptions('Orders')
             });
 
             // Revenue Chart
             const revenueCtx = document.getElementById('revenueChart').getContext('2d');
-            const revenueChart = new Chart(revenueCtx, {
+            if (revenueChart) revenueChart.destroy();
+            revenueChart = new Chart(revenueCtx, {
                 type: 'bar',
                 data: {
-                    labels: months.slice(0, 6), // Last 6 months
+                    labels: data.labels,
                     datasets: [{
                         label: 'Revenue ($)',
-                        data: [14500, 15200, 16800, 17450, 18000, 18450],
+                        data: data.revenue,
                         backgroundColor: chartColors.primary,
                         borderColor: chartColors.secondary,
                         borderWidth: 1,
@@ -530,144 +623,177 @@ $_SESSION['login_time'] = time();
                         hoverBackgroundColor: chartColors.secondary
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: chartColors.grid,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
-                                },
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: chartColors.grid,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
-                                }
-                            }
-                        }
-                    }
-                }
+                options: getChartOptions('Revenue ($)', true)
             });
 
-            // New Customers Chart
+            // Customers Chart
             const customersCtx = document.getElementById('customersChart').getContext('2d');
-            const customersChart = new Chart(customersCtx, {
-                type: 'doughnut',
+            if (customersChart) customersChart.destroy();
+            customersChart = new Chart(customersCtx, {
+                type: 'line',
                 data: {
-                    labels: ['New Customers', 'Returning Customers'],
+                    labels: data.labels,
                     datasets: [{
-                        data: [342, 905],
-                        backgroundColor: [
-                            chartColors.primary,
-                            chartColors.accent
-                        ],
-                        borderColor: '#ffffff',
+                        label: 'Customers',
+                        data: data.customers,
+                        borderColor: chartColors.accent,
+                        backgroundColor: chartColors.accent + '20',
                         borderWidth: 3,
-                        hoverOffset: 15
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '70%',
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif',
-                                    size: 12
-                                },
-                                padding: 20,
-                                usePointStyle: true
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Active Products Chart
-            const productsCtx = document.getElementById('productsChart').getContext('2d');
-            const productsChart = new Chart(productsCtx, {
-                type: 'radar',
-                data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'],
-                    datasets: [{
-                        label: 'Active Products',
-                        data: [75, 78, 80, 82, 85, 87, 89],
-                        backgroundColor: chartColors.primary + '40',
-                        borderColor: chartColors.primary,
-                        borderWidth: 2,
-                        pointBackgroundColor: chartColors.primary,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: chartColors.accent,
                         pointBorderColor: '#ffffff',
                         pointBorderWidth: 2,
-                        pointRadius: 4
+                        pointRadius: 5,
+                        pointHoverRadius: 7
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        r: {
-                            beginAtZero: false,
-                            min: 70,
-                            grid: {
-                                color: chartColors.grid
-                            },
-                            angleLines: {
-                                color: chartColors.grid
-                            },
-                            pointLabels: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
+                options: getChartOptions('Customers')
+            });
+
+            // Products Chart
+            const productsCtx = document.getElementById('productsChart').getContext('2d');
+            if (productsChart) productsChart.destroy();
+            productsChart = new Chart(productsCtx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Sold Products',
+                        data: data.products,
+                        backgroundColor: chartColors.primary,
+                        borderColor: chartColors.secondary,
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        hoverBackgroundColor: chartColors.secondary
+                    }]
+                },
+                options: getChartOptions('Products Sold')
+            });
+
+            // Update total values
+            updateTotalValues(data.totals, data.changes);
+        }
+
+        // Get chart options based on type
+        function getChartOptions(label, isCurrency = false) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.parsed.y;
+                                let suffix = '';
+                                
+                                if (isCurrency) {
+                                    value = '$' + value.toLocaleString();
+                                    suffix = '';
+                                } else {
+                                    value = value.toLocaleString();
                                 }
+                                
+                                return label + ': ' + value + suffix;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: chartColors.grid,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: chartColors.text,
+                            font: {
+                                family: 'Arial, sans-serif'
                             },
-                            ticks: {
-                                color: chartColors.text,
-                                font: {
-                                    family: 'Arial, sans-serif'
+                            callback: function(value) {
+                                if (isCurrency) {
+                                    return '$' + value.toLocaleString();
                                 }
+                                return value.toLocaleString();
                             }
                         }
                     },
-                    plugins: {
-                        legend: {
-                            display: false
+                    x: {
+                        grid: {
+                            color: chartColors.grid,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: chartColors.text,
+                            font: {
+                                family: 'Arial, sans-serif'
+                            }
                         }
                     }
                 }
-            });
+            };
+        }
 
+        // Update total values and changes
+        function updateTotalValues(totals, changes) {
+            document.getElementById('ordersValue').textContent = totals.orders.toLocaleString();
+            document.getElementById('revenueValue').textContent = '$' + totals.revenue.toLocaleString();
+            document.getElementById('customersValue').textContent = totals.customers.toLocaleString();
+            document.getElementById('productsValue').textContent = totals.products.toLocaleString();
+            
+            document.getElementById('ordersChange').textContent = changes.orders;
+            document.getElementById('revenueChange').textContent = changes.revenue;
+            document.getElementById('customersChange').textContent = changes.customers;
+            document.getElementById('productsChange').textContent = changes.products;
+        }
+
+        // Handle filter button clicks
+        function setupFilterButtons() {
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            
+            filterButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    filterButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    
+                    // Update current filter
+                    currentFilter = this.dataset.filter;
+                    
+                    // Update charts
+                    initializeCharts();
+                    
+                    // Update dashboard title
+                    const periodText = currentFilter === 'week' ? 'Weekly' : 
+                                      currentFilter === 'month' ? 'Monthly' : 'Yearly';
+                    document.getElementById('dashboardOverview').textContent = `${periodText} Dashboard Overview`;
+                });
+            });
+        }
+
+        // Initialize everything when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCharts();
+            setupFilterButtons();
+            
             // Update charts on window resize
             window.addEventListener('resize', function() {
-                ordersChart.resize();
-                revenueChart.resize();
-                customersChart.resize();
-                productsChart.resize();
+                if (ordersChart) ordersChart.resize();
+                if (revenueChart) revenueChart.resize();
+                if (customersChart) customersChart.resize();
+                if (productsChart) productsChart.resize();
             });
         });
     </script>

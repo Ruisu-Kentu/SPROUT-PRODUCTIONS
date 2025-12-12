@@ -184,214 +184,11 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shopping Cart - Sprout Productions</title>
+    <link rel="stylesheet" href="../css/land-pag-sec.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Import landing page header styles */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body {
-            background-color: #f8f9fa;
-            color: #333;
-        }
-        
-        /* Fixed Header from Landing Page */
-        .sticky-header {
-            position: sticky;
-            top: 0;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-        }
-        
-        .top-bar {
-            background: #000;
-            color: #fff;
-            padding: 8px 0;
-            font-size: 14px;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        
-        .top-bar-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .user-info-with-icon {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .user-icon-small {
-            width: 16px;
-            height: 16px;
-            filter: invert(1);
-            opacity: 0.8;
-        }
-        
-        .welcome-text {
-            opacity: 0.8;
-        }
-        
-        .user-email {
-            font-weight: 500;
-        }
-        
-        .top-bar-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .logout-link-no-icon {
-            display: inline-block;
-            color: #fff;
-            text-decoration: none;
-            padding: 6px 15px;
-            border-radius: 30px;
-            transition: all 0.3s ease;
-            font-size: 13px;
-            font-weight: 500;
-            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-            border: none;
-            box-shadow: 0 3px 10px rgba(231, 76, 60, 0.3);
-        }
-        
-        .logout-link-no-icon:hover {
-            background: linear-gradient(135deg, #ff6b5c 0%, #e74c3c 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
-        }
-        
-        .close-icon {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            opacity: 0.7;
-            transition: opacity 0.3s;
-        }
-        
-        .close-icon:hover {
-            opacity: 1;
-        }
-        
-        .main-navigation {
-            background: #fff;
-            padding: 15px 0;
-        }
-        
-        .nav-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .logo-link {
-            display: flex;
-            align-items: center;
-            text-decoration: none;
-            color: #000;
-            gap: 10px;
-        }
-        
-        .logo-img {
-            height: 40px;
-            width: auto;
-        }
-        
-        .logo-text {
-            font-size: 20px;
-            font-weight: bold;
-            letter-spacing: 1px;
-        }
-        
-        .center-nav {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-        }
-        
-        .nav-menu {
-            display: flex;
-            list-style: none;
-            gap: 40px;
-        }
-        
-        .nav-menu li {
-            position: relative;
-        }
-        
-        .nav-menu a {
-            text-decoration: none;
-            color: #333;
-            font-weight: 500;
-            font-size: 16px;
-            padding: 8px 0;
-            transition: color 0.3s;
-        }
-        
-        .nav-menu a:hover {
-            color: #27ae60;
-        }
-        
-        .right-nav {
-            display: flex;
-            align-items: center;
-        }
-        
-        .action-icons {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .icon-link {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .nav-icon {
-            width: 24px;
-            height: 24px;
-            transition: transform 0.3s;
-        }
-        
-        .icon-link:hover .nav-icon {
-            transform: scale(1.1);
-        }
-        
-        .icon-badge {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background-color: #e74c3c;
-            color: white;
-            font-size: 11px;
-            font-weight: bold;
-            min-width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-        }
-        
-        /* Cart Page Styles */
+        /* Cart Page Specific Styles */
         .cart-container {
             max-width: 1200px;
             margin: 40px auto;
@@ -399,10 +196,13 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
         }
         
         .cart-title {
-            font-size: 32px;
-            font-weight: 700;
+            font-size: 48px;
+            font-weight: bold;
             margin-bottom: 30px;
             color: #000;
+            font-family: 'Georgia', serif;
+            text-align: center;
+            letter-spacing: 2px;
         }
         
         .cart-grid {
@@ -423,6 +223,8 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             border-radius: 12px;
             padding: 30px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            margin-left: 130px;
+            width: 900px;
         }
         
         .cart-item {
@@ -591,7 +393,7 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             box-shadow: 0 4px 20px rgba(0,0,0,0.05);
             height: fit-content;
             position: sticky;
-            top: 120px;
+            top: 140px;
         }
         
         .order-summary h2 {
@@ -599,6 +401,7 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             font-weight: 700;
             margin-bottom: 25px;
             color: #000;
+            font-family: 'Georgia', serif;
         }
         
         .summary-line {
@@ -696,102 +499,12 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             color: #666;
             font-size: 18px;
         }
-        
-        /* Footer */
-        .footer {
-            background: #000;
-            color: #fff;
-            padding: 50px 0 20px;
-            margin-top: 60px;
-        }
-        
-        .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 40px;
-        }
-        
-        @media (max-width: 900px) {
-            .footer-content {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        @media (max-width: 600px) {
-            .footer-content {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        .footer-column h3 {
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: #fff;
-        }
-        
-        .footer-description {
-            color: #aaa;
-            line-height: 1.6;
-            margin-bottom: 20px;
-        }
-        
-        .footer-links {
-            list-style: none;
-        }
-        
-        .footer-links li {
-            margin-bottom: 10px;
-        }
-        
-        .footer-links a {
-            color: #aaa;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .footer-links a:hover {
-            color: #fff;
-        }
-        
-        .social-icons {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .social-icon-fb,
-        .social-icon-insta,
-        .social-icon-github,
-        .social-icon-twitter {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background: #333;
-            transition: background 0.3s;
-        }
-        
-        .social-icon-fb:hover { background: #3b5998; }
-        .social-icon-insta:hover { background: #e4405f; }
-        .social-icon-github:hover { background: #333; }
-        .social-icon-twitter:hover { background: #1da1f2; }
-        
-        .footer-bottom {
-            max-width: 1200px;
-            margin: 40px auto 0;
-            padding: 20px;
-            text-align: center;
-            border-top: 1px solid #333;
-            color: #aaa;
-            font-size: 14px;
-        }
     </style>
 </head>
 <body>
-    <!-- Fixed Header (Same as Landing Page) -->
+    <!-- Fixed Header (Same as New Arrivals) -->
     <header class="sticky-header">
-        <!-- Top Bar with User Info and Logout -->
+        <!-- Top Bar -->
         <div class="top-bar">
             <div class="container">
                 <div class="top-bar-content">
@@ -801,9 +514,7 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                         <span class="user-email"><?php echo htmlspecialchars($_SESSION['email']); ?> (<?php echo $_SESSION['role']; ?>)</span>
                     </div>
                     <div class="top-bar-actions">
-                        <a href="logout.php" class="logout-link-no-icon">
-                            Logout
-                        </a>
+                        <a href="logout.php" class="logout-link-no-icon">Logout</a>
                         <img src="../images/close_logo.png" alt="Close" class="close-icon">
                     </div>
                 </div>
@@ -814,7 +525,6 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
         <div class="main-navigation">
             <div class="container">
                 <div class="nav-content">
-                    <!-- Logo -->
                     <div class="logo">
                         <a href="Landing-Page-Section.php" class="logo-link">
                             <img src="../images/sprout logo bg-removed 3.png" alt="Sprout Logo" class="logo-img">
@@ -822,16 +532,15 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                         </a>
                     </div>
 
-                    <!-- Center Navigation Menu -->
                     <nav class="center-nav">
                         <ul class="nav-menu">
                             <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
                             <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
-                            <li><a href="Limited-Time-Offers.php">Limited-Time Offers</a></li>
+                            <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
+                            <li><a href="my-orders.php">My Orders</a></li>
                         </ul>
                     </nav>
 
-                    <!-- Right Side Icons -->
                     <div class="right-nav">
                         <div class="action-icons">
                             <a href="cart-section.php" class="icon-link">
@@ -847,7 +556,7 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
 
     <!-- Cart Content -->
     <div class="cart-container">
-        <h1 class="cart-title">Your Shopping Cart</h1>
+        <h1 class="cart-title">YOUR SHOPPING CART</h1>
         
         <div class="cart-grid">
             <!-- Cart Items Section -->
@@ -1188,3 +897,4 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
     </script>
 </body>
 </html>
+<?php $conn->close(); ?>
