@@ -35,6 +35,7 @@ $_SESSION['login_time'] = time();
     <link rel="stylesheet" href="../css/admin-dash.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Additional styles for updated layout */
         .admin-welcome {
@@ -58,7 +59,94 @@ $_SESSION['login_time'] = time();
             color: #fff;
             font-weight: 600;
         }
-    
+        
+        /* Chart container styles */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            border: 1px solid #eee;
+        }
+        
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .chart-title {
+            font-family: 'Georgia', serif;
+            font-size: 20px;
+            color: #8B4513;
+            margin: 0;
+        }
+        
+        .chart-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2e7d32;
+            font-family: 'Georgia', serif;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        .chart-change {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #666;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #f0f0f0;
+        }
+        
+        .change-up {
+            color: #4CAF50;
+        }
+        
+        .change-down {
+            color: #f44336;
+        }
+        
+        @media (max-width: 1024px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 250px;
+            }
+            
+            .chart-value {
+                font-size: 24px;
+            }
+            
+            .chart-card {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -121,26 +209,62 @@ $_SESSION['login_time'] = time();
         <div class="container">
             <h1 class="dashboard-title">Dashboard Overview</h1>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Total Orders</div>
-                    <div class="stat-value">1,247</div>
-                    <div class="stat-change">↑ 12% from last month</div>
+            <!-- Charts Grid -->
+            <div class="charts-grid">
+                <!-- Total Orders Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Total Orders</h3>
+                        <div class="chart-value">1,247</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="ordersChart"></canvas>
+                    </div>
+                    <div class="chart-change">
+                        <span class="change-up">↑ 12% from last month</span>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Revenue</div>
-                    <div class="stat-value">$18,450</div>
-                    <div class="stat-change">↑ 8% from last month</div>
+
+                <!-- Revenue Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Revenue</h3>
+                        <div class="chart-value">$18,450</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                    <div class="chart-change">
+                        <span class="change-up">↑ 8% from last month</span>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">New Customers</div>
-                    <div class="stat-value">342</div>
-                    <div class="stat-change">↑ 15% from last month</div>
+
+                <!-- New Customers Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">New Customers</h3>
+                        <div class="chart-value">342</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="customersChart"></canvas>
+                    </div>
+                    <div class="chart-change">
+                        <span class="change-up">↑ 15% from last month</span>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Active Products</div>
-                    <div class="stat-value">89</div>
-                    <div class="stat-change">↑ 3% from last month</div>
+
+                <!-- Active Products Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Active Products</h3>
+                        <div class="chart-value">89</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="productsChart"></canvas>
+                    </div>
+                    <div class="chart-change">
+                        <span class="change-up">↑ 3% from last month</span>
+                    </div>
                 </div>
             </div>
 
@@ -313,6 +437,245 @@ $_SESSION['login_time'] = time();
         function editProduct(productId) {
             window.location.href = `../php/Admin-Products-Page.php?edit=${productId}`;
         }
+
+        // Chart configurations
+        document.addEventListener('DOMContentLoaded', function() {
+            // Chart color scheme
+            const chartColors = {
+                primary: '#8B4513',      // Brown
+                secondary: '#6B3410',    // Darker brown
+                accent: '#2e7d32',       // Green
+                background: '#f9f9f9',
+                grid: '#e0e0e0',
+                text: '#333333'
+            };
+
+            // Monthly data for all charts
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Total Orders Chart
+            const ordersCtx = document.getElementById('ordersChart').getContext('2d');
+            const ordersChart = new Chart(ordersCtx, {
+                type: 'line',
+                data: {
+                    labels: months.slice(0, 7), // Last 7 months
+                    datasets: [{
+                        label: 'Orders',
+                        data: [980, 1020, 1100, 1150, 1200, 1247, 1300],
+                        borderColor: chartColors.primary,
+                        backgroundColor: chartColors.primary + '20',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: chartColors.primary,
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            padding: 12
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: chartColors.grid,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: chartColors.grid,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Revenue Chart
+            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+            const revenueChart = new Chart(revenueCtx, {
+                type: 'bar',
+                data: {
+                    labels: months.slice(0, 6), // Last 6 months
+                    datasets: [{
+                        label: 'Revenue ($)',
+                        data: [14500, 15200, 16800, 17450, 18000, 18450],
+                        backgroundColor: chartColors.primary,
+                        borderColor: chartColors.secondary,
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        hoverBackgroundColor: chartColors.secondary
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: chartColors.grid,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                },
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: chartColors.grid,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // New Customers Chart
+            const customersCtx = document.getElementById('customersChart').getContext('2d');
+            const customersChart = new Chart(customersCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['New Customers', 'Returning Customers'],
+                    datasets: [{
+                        data: [342, 905],
+                        backgroundColor: [
+                            chartColors.primary,
+                            chartColors.accent
+                        ],
+                        borderColor: '#ffffff',
+                        borderWidth: 3,
+                        hoverOffset: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif',
+                                    size: 12
+                                },
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Active Products Chart
+            const productsCtx = document.getElementById('productsChart').getContext('2d');
+            const productsChart = new Chart(productsCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'],
+                    datasets: [{
+                        label: 'Active Products',
+                        data: [75, 78, 80, 82, 85, 87, 89],
+                        backgroundColor: chartColors.primary + '40',
+                        borderColor: chartColors.primary,
+                        borderWidth: 2,
+                        pointBackgroundColor: chartColors.primary,
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: false,
+                            min: 70,
+                            grid: {
+                                color: chartColors.grid
+                            },
+                            angleLines: {
+                                color: chartColors.grid
+                            },
+                            pointLabels: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                }
+                            },
+                            ticks: {
+                                color: chartColors.text,
+                                font: {
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Update charts on window resize
+            window.addEventListener('resize', function() {
+                ordersChart.resize();
+                revenueChart.resize();
+                customersChart.resize();
+                productsChart.resize();
+            });
+        });
     </script>
 </body>
 </html>

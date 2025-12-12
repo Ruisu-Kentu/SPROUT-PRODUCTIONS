@@ -539,3 +539,135 @@ tr:hover {
         font-size: 12px;
     }
 }
+
+/* ===== CHART STYLES ===== */
+
+/* Add to your existing CSS after .no-products section */
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+    margin-bottom: 40px;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    border: 1px solid #eee;
+    transition: all 0.3s ease;
+}
+
+.chart-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.chart-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.chart-title {
+    font-family: 'Georgia', serif;
+    font-size: 20px;
+    color: #8B4513;
+    margin: 0;
+}
+
+.chart-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #2e7d32;
+    font-family: 'Georgia', serif;
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+.chart-change {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #666;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.change-up {
+    color: #4CAF50;
+}
+
+.change-down {
+    color: #f44336;
+}
+
+/* Responsive Chart Styles */
+@media (max-width: 1200px) {
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 1024px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-container {
+        height: 280px;
+    }
+}
+
+@media (max-width: 768px) {
+    .chart-container {
+        height: 250px;
+    }
+    
+    .chart-value {
+        font-size: 24px;
+    }
+    
+    .chart-card {
+        padding: 20px;
+    }
+    
+    .chart-title {
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 480px) {
+    .chart-container {
+        height: 220px;
+    }
+    
+    .chart-value {
+        font-size: 22px;
+    }
+    
+    .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .chart-change {
+        font-size: 13px;
+    }
+}

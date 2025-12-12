@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sprout Productions - Sign Up</title>
-  <link rel="stylesheet" href="../css/checkout-section.css">
+  <link rel="stylesheet" href="../css/checkout-newAdd.css">
   <link rel="icon" href="../images/sprout logo bg-removed 3.png">
 </head>
 <body>
