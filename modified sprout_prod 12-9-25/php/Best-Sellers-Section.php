@@ -9,7 +9,7 @@
 </head>
 <body>
     <!-- Header -->
-    < <div class="header-top">
+     <div class="header-top">
         Sign up and get 20% off your first order.    <a href="../php/Register-Form.php">Sign Up Now</a>
         <img src="../images/close_logo.png" alt="">
     </div>

@@ -4,35 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Customers - Sprout Productions</title>
-    <link rel="stylesheet" href="../css/admin-dash.css">
+    <link rel="stylesheet" href="../css/admin-uniform.css">
+  
 </head>
 <body>
-    <div class="header">
-        <div class="logo">SPROUT PRODUCTIONS</div>
-        <img src="../images/sprout logo bg-removed 3.png" alt="">
-        <div class="user-info">
-            <span>Welcome, Admin</span>
-            <div class="user-avatar">A</div>
-            <button class="logout-btn" onclick="logout()">Logout</button>
-        </div>
-    </div>
-
-    <nav class="navbar">
-        <div class="navbar-container">
-            <button class="mobile-menu-btn" onclick="toggleMenu()">☰</button>
-            <ul class="nav-links" id="navLinks">
-                <li><a href="../php/Admin-Dashboard.php" onclick="navigate('dashboard')">Dashboard</a></li>
-                <li><a href="../php/Admin-Products-Page.php" onclick="navigate('products')">Products</a></li>
-                <li><a href="../php/Admin-Orders-Page.php" onclick="navigate('orders')">Orders</a></li>
-                <li><a href="#" class="active" onclick="navigate('customers')">Customers</a></li>
-                <li><a href="../php/Admin-Analytics-Page.php" onclick="navigate('analytics')">Analytics</a></li>
-                <li><a href="../php/Admin-Settings-Page.php" onclick="navigate('settings')">Settings</a></li>
-            </ul>
-            <div class="nav-search">
-                <input type="text" class="search-box" placeholder="Search customers..." onkeyup="handleSearch(event)">
+   <!-- Fixed Header -->
+    <header class="sticky-header">
+        <!-- Top Bar with User Info and Logout -->
+        <div class="top-bar">
+            <div class="container">
+                <div class="top-bar-content">
+                    <div class="admin-welcome">
+                        <img src="../images/user_logo.png" alt="Admin" class="admin-icon-small">
+                        <span class="admin-text">Welcome, Admin</span>
+                    </div>
+                    <div class="top-bar-actions">
+                        <a href="logout.php" class="logout-link-no-icon">
+                            Logout
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
-    </nav>
+
+        <!-- Main Navigation -->
+        <div class="main-navigation">
+            <div class="container">
+                <div class="nav-content">
+                    <!-- Logo -->
+                    <div class="logo">
+                        <a href="Admin-Dashboard.php" class="logo-link">
+                            <img src="../images/sprout logo bg-removed 3.png" alt="Sprout Logo" class="logo-img">
+                            <span class="logo-text">SPROUT PRODUCTIONS</span>
+                        </a>
+                    </div>
+
+                    <!-- Center Navigation Menu -->
+                    <nav class="center-nav">
+                        <ul class="nav-menu">
+                            <li><a href="Admin-Dashboard.php" >Dashboard</a></li>
+                            <li><a href="../php/Admin-Products-Page.php">Products</a></li>
+                            <li><a href="../php/Admin-Orders-Page.php">Orders</a></li>
+                            <li><a href="../php/Admin-Customers-Page.php" class="active">Customers</a></li>
+                        </ul>
+                    </nav>
+
+                  
+                </div>
+            </div>
+        </div>
+    </header>
 
     <div class="container">
         <h1 class="dashboard-title">Customers</h1>

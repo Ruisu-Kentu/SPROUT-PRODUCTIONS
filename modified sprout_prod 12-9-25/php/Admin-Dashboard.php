@@ -150,6 +150,7 @@ $_SESSION['login_time'] = time();
     </style>
 </head>
 <body>
+
     <!-- Fixed Header -->
     <header class="sticky-header">
         <!-- Top Bar with User Info and Logout -->
@@ -188,17 +189,10 @@ $_SESSION['login_time'] = time();
                             <li><a href="../php/Admin-Products-Page.php">Products</a></li>
                             <li><a href="../php/Admin-Orders-Page.php">Orders</a></li>
                             <li><a href="../php/Admin-Customers-Page.php">Customers</a></li>
-                            <li><a href="../php/Admin-Analytics-Page.php">Analytics</a></li>
-                            <li><a href="../php/Admin-Settings-Page.php">Settings</a></li>
                         </ul>
                     </nav>
 
-                    <!-- Right Side Icons -->
-                    <div class="right-nav">
-                        <div class="action-icons">
-                            <div class="user-avatar">A</div>
-                        </div>
-                    </div>
+                
                 </div>
             </div>
         </div>
@@ -207,7 +201,7 @@ $_SESSION['login_time'] = time();
     <!-- Main Content -->
     <main class="main-content">
         <div class="container">
-            <h1 class="dashboard-title">Dashboard Overview</h1>
+            <h1 class="dashboard-title" id="dashboardOverview">Dashboard Overview</h1>
 
             <!-- Charts Grid -->
             <div class="charts-grid">

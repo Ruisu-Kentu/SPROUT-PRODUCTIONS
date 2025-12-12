@@ -49,6 +49,7 @@ body {
     justify-content: space-between;
     align-items: center;
     font-size: 14px;
+    margin-left: 7px;
 }
 
 /* User Info with Icon */
@@ -154,6 +155,7 @@ body {
     min-width: 200px;
     display: flex;
     align-items: center;
+    margin-left: 9px;
 }
 
 .logo-link {
@@ -250,7 +252,7 @@ body {
 .user-avatar {
     width: 40px;
     height: 40px;
-    background-color: #8B4513;
+    background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -259,8 +261,47 @@ body {
     font-weight: bold;
     font-size: 18px;
     cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(139, 69, 19, 0.3);
+    border: 2px solid #fff;
+    position: relative;
+    overflow: hidden;
 }
 
+.user-avatar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.2) 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.user-avatar:hover {
+    background: linear-gradient(135deg, #6B3410 0%, #8B4513 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
+}
+
+.user-avatar:hover::before {
+    opacity: 1;
+}
+
+/* User Avatar with Image */
+.user-avatar img {
+    width: 30px;
+    height: 30px;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+/* Admin Icon Style (alternative to letter) */
+.user-avatar i {
+    font-size: 20px;
+}
 /* ===== MAIN CONTENT ===== */
 .main-content {
     padding: 40px 0;
@@ -268,12 +309,14 @@ body {
 }
 
 .dashboard-title {
+    
     font-size: 36px;
     color: #8B4513;
     margin-bottom: 30px;
     font-weight: normal;
     text-align: center;
     font-family: 'Georgia', serif;
+    margin-bottom: 50px;
 }
 
 /* Stats Grid */
