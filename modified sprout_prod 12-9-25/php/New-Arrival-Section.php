@@ -3,25 +3,22 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header("Location: Login-Form.php");
+    echo '<script>
+        alert("⚠️\\n\\nPlease log in first!");
+        window.location.href = "Login-Form.php";
+    </script>';
     exit();
 }
 
-// Check if user is admin
+// Check if user is admin - deny access if they are
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
-    header("Location: Admin-Dashboard.php");
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nThis page is only for regular users!");
+        window.location.href = "admin-dashboard.php"; // Redirect to admin dashboard
+    </script>';
     exit();
 }
 
-// Check session timeout (30 minutes)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
-    session_unset();
-    session_destroy();
-    header("Location: Login-Form.php?error=session_expired");
-    exit();
-}
-
-$_SESSION['login_time'] = time();
 
 // Database configuration
 $host = "localhost";
@@ -104,7 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
         
         if ($stmt->execute()) {
-            $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+            // Get updated cart count - COUNT DISTINCT PRODUCTS (not sum of quantities)
+            $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
             $stmt = $conn->prepare($countQuery);
             $stmt->bind_param("i", $userId);
             $stmt->execute();
@@ -114,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             echo json_encode([
                 'success' => true,
                 'message' => 'Product added to cart',
-                'item_count' => $countData['total_items'] ?? 0
+                'item_count' => $countData['product_count'] ?? 0  // Changed to product_count
             ]);
         } else {
             echo json_encode(['success' => false, 'message' => 'Failed to add to cart']);
@@ -127,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
         
         if ($userId) {
-            $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+            // Get cart count - COUNT DISTINCT PRODUCTS (not sum of quantities)
+            $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
             $stmt = $conn->prepare($countQuery);
             $stmt->bind_param("i", $userId);
             $stmt->execute();
@@ -136,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             echo json_encode([
                 'success' => true,
-                'item_count' => $countData['total_items'] ?? 0
+                'item_count' => $countData['product_count'] ?? 0  // Changed to product_count
             ]);
         } else {
             echo json_encode(['success' => false, 'item_count' => 0]);
@@ -145,18 +144,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get cart count
+// Get cart count for display - COUNT DISTINCT PRODUCTS (not sum of quantities)
 $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
 $cartCount = 0;
 
 if ($userId) {
-    $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+    $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
     $stmt = $conn->prepare($countQuery);
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $countResult = $stmt->get_result();
     $countData = $countResult->fetch_assoc();
-    $cartCount = $countData['total_items'] ?? 0;
+    $cartCount = $countData['product_count'] ?? 0;
     $stmt->close();
 }
 ?>
@@ -167,6 +166,7 @@ if ($userId) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sprout Productions - New Arrivals</title>
     <link rel="stylesheet" href="../css/land-pag-sec.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
     <style>
         /* Additional styles for New Arrivals page */
@@ -272,7 +272,7 @@ if ($userId) {
             border-radius: 4px;
             font-size: 12px;
             font-weight: bold;
-            z-index: 1;
+            z-index: 2;
         }
         
         .out-of-stock {
@@ -291,34 +291,63 @@ if ($userId) {
             cursor: pointer;
             margin-top: 10px;
             font-weight: bold;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
         }
         
         .add-to-cart-btn:hover {
             background: #333;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         
         .add-to-cart-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
         
-        /* Product image container */
+        /* Product image container - UPDATED */
         .product-image {
             position: relative;
-            height: 300px;
             overflow: hidden;
+            height: 250px;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .product-image a {
+            display: block;
+            width: 100%;
+            height: 100%;
+            text-decoration: none;
+            color: inherit;
         }
         
         .product-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
             transition: transform 0.3s ease;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
         
         .product-card:hover .product-image img {
             transform: scale(1.05);
+        }
+        
+        /* Default image styling */
+        .default-product-image {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+            color: #666;
+            font-size: 14px;
         }
         
         /* Star ratings */
@@ -336,22 +365,70 @@ if ($userId) {
             clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         }
         
-        /* Price styling */
+        /* Price styling - UPDATED */
+        .price-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+        }
+        
         .original-price {
             font-size: 14px;
             color: #999;
             text-decoration: line-through;
-            margin-left: 8px;
         }
         
-        .discount-badge {
-            background-color: #ffe0e0;
-            color: #ff4444;
-            padding: 2px 8px;
-            border-radius: 16px;
-            font-size: 12px;
+        .current-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: #000;
+        }
+        
+        /* Discount badge */
+        .discount-badge-landing {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 2;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+        
+        /* View Details button - UPDATED to match Add to Cart */
+        .view-more-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
             font-weight: bold;
-            margin-left: 8px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .view-more-btn:hover {
+            background: #333;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .view-more-btn i {
+            font-size: 14px;
         }
         
         /* Product rating container */
@@ -394,17 +471,93 @@ if ($userId) {
             -webkit-box-orient: vertical;
         }
         
-        /* Product price container */
-        .product-price {
-            display: flex;
-            align-items: center;
-            margin: 8px 0;
+        /* Product name link styling */
+        .product-name-link {
+            color: #333;
+            text-decoration: none;
+            transition: color 0.3s ease;
         }
         
-        .current-price {
-            font-size: 18px;
-            font-weight: bold;
+        .product-name-link:hover {
             color: #000;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .products-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .page-header h1 {
+                font-size: 36px;
+            }
+        }
+        
+        /* Notification styles (same as landing page) */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        .notification-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .notification-error {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            margin-left: 15px;
+            font-size: 16px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Cart badge animation */
+        .icon-badge.updated {
+            transform: scale(1.2);
+            background-color: #27ae60;
         }
     </style>
 </head>
@@ -473,65 +626,92 @@ if ($userId) {
     <section class="products-section">
         <div class="products-grid">
             <?php if ($newArrivalsResult && $newArrivalsResult->num_rows > 0): ?>
-                <?php while ($product = $newArrivalsResult->fetch_assoc()): ?>
+                <?php while($product = $newArrivalsResult->fetch_assoc()): ?>
+                    <?php
+                    $isDiscounted = $product['is_discounted'] == 1;
+                    $discountPercent = $product['discount_percent'];
+                    $originalPrice = $product['price'];
+                    $discountPrice = $originalPrice * (1 - $discountPercent / 100);
+                    ?>
                     <div class="product-card">
                         <div class="product-image">
-                            <?php if ($product['image_path']): ?>
-                                <img src="<?php echo htmlspecialchars($product['image_path']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
-                            <?php else: ?>
-                                <img src="../images/no-image.jpg" alt="No Image Available">
+                            <?php 
+                            // Check if image path exists and is valid (SAME AS LANDING PAGE)
+                            $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : '';
+                            
+                            if (!empty($imagePath)) {
+                                // Check if path starts with 'uploads/' or '../uploads/'
+                                if (strpos($imagePath, 'uploads/') === 0) {
+                                    // It's already a relative path from root
+                                    $displayPath = '../' . $imagePath;
+                                } else if (strpos($imagePath, '../uploads/') === 0) {
+                                    // It starts with ../uploads/
+                                    $displayPath = $imagePath;
+                                } else if (strpos($imagePath, 'http') === 0) {
+                                    // It's an absolute URL
+                                    $displayPath = $imagePath;
+                                } else {
+                                    // It's a relative path, prepend ../
+                                    $displayPath = '../' . $imagePath;
+                                }
+                                ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <img src="<?php echo $displayPath; ?>" 
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
+                                </a>
+                            <?php } else { ?>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                    <div class="default-product-image">
+                                        <i class="fas fa-image"></i> No image
+                                    </div>
+                                </a>
+                            <?php } ?>
+                            
+                            <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                <div class="discount-badge-landing">-<?php echo $discountPercent; ?>% OFF</div>
                             <?php endif; ?>
                             
-                            <!-- Stock Badge -->
-                            <div class="stock-badge <?php echo $product['stock'] <= 0 ? 'out-of-stock' : ''; ?>">
-                                <?php echo $product['stock'] > 0 ? 'In Stock' : 'Out of Stock'; ?>
-                            </div>
+                            <?php if ($product['stock'] > 0): ?>
+                                <span class="stock-badge">In Stock (<?php echo $product['stock']; ?>)</span>
+                            <?php else: ?>
+                                <span class="stock-badge out-of-stock">Out of Stock</span>
+                            <?php endif; ?>
                         </div>
                         <div class="product-info">
-                            <h3 class="product-name"><?php echo htmlspecialchars($product['name']); ?></h3>
-                            
-                            <!-- Product Rating (Static for now - you can add ratings to your database later) -->
-                            <div class="product-rating">
-                                <div class="stars">
-                                    <?php
-                                    // Static rating - you can modify this when you add ratings to your database
-                                    $rating = 4.0;
-                                    $fullStars = floor($rating);
-                                    $hasHalfStar = ($rating - $fullStars) >= 0.5;
-                                    
-                                    for ($i = 1; $i <= 5; $i++):
-                                        if ($i <= $fullStars):
-                                    ?>
-                                        <div class="star-filled"></div>
-                                    <?php elseif ($i == $fullStars + 1 && $hasHalfStar): ?>
-                                        <div class="star-filled" style="background: linear-gradient(90deg, #ffd700 50%, #e0e0e0 50%);"></div>
-                                    <?php else: ?>
-                                        <div class="star-empty"></div>
-                                    <?php endif; endfor; ?>
-                                </div>
-                                <span class="rating-count"><?php echo number_format($rating, 1); ?>/5</span>
-                            </div>
+                            <h3>
+                                <a href="product-details.php?id=<?php echo $product['id']; ?>" class="product-name-link">
+                                    <?php echo htmlspecialchars($product['name']); ?>
+                                </a>
+                            </h3>
+                        
                             
                             <!-- Product Price -->
-                            <div class="product-price">
-                                <?php if ($product['is_discounted'] && $product['discount_percent'] > 0): ?>
-                                    <?php
-                                    $discountedPrice = $product['price'] - ($product['price'] * $product['discount_percent'] / 100);
-                                    ?>
-                                    <span class="current-price">₱<?php echo number_format($discountedPrice, 2); ?></span>
-                                    <span class="original-price">₱<?php echo number_format($product['price'], 2); ?></span>
-                                    <span class="discount-badge">-<?php echo $product['discount_percent']; ?>%</span>
+                            <div class="price-container">
+                                <?php if ($isDiscounted && $discountPercent > 0): ?>
+                                    <span class="original-price">₱<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($discountPrice, 2); ?></span>
                                 <?php else: ?>
-                                    <span class="current-price">₱<?php echo number_format($product['price'], 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($originalPrice, 2); ?></span>
                                 <?php endif; ?>
                             </div>
                             
                             <!-- Add to Cart Button -->
                             <button class="add-to-cart-btn" 
                                     data-product-id="<?php echo $product['id']; ?>"
-                                    <?php echo $product['stock'] <= 0 ? 'disabled' : ''; ?>>
-                                <?php echo $product['stock'] <= 0 ? 'Out of Stock' : 'Add to Cart'; ?>
+                                    data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
+                                    data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
+                                    <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                                <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
                             </button>
+                            
+                            <!-- View Details Button -->
+                            <a href="product-details.php?id=<?php echo $product['id']; ?>">
+                                <button class="view-more-btn">
+                                    <i class="fas fa-eye"></i>
+                                    <span>View Details</span>
+                                </button>
+                            </a>
                         </div>
                     </div>
                 <?php endwhile; ?>
@@ -569,6 +749,7 @@ if ($userId) {
                 </a>
             <?php endfor; ?>
             
+            <?php
             if ($endPage < $totalPages) {
                 if ($endPage < $totalPages - 1) echo '<span>...</span>';
                 echo '<a href="?page=' . $totalPages . '">' . $totalPages . '</a>';
@@ -643,6 +824,7 @@ if ($userId) {
         const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
         const cartBadge = document.getElementById('cart-badge');
         
+        // Function to update cart badge
         function updateCartBadge() {
             fetch('New-Arrival-Section.php', {
                 method: 'POST',
@@ -667,46 +849,94 @@ if ($userId) {
         }
         
         addToCartButtons.forEach(button => {
-            button.addEventListener('click', function() {
+            button.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent triggering other clicks
                 if (this.disabled) return;
                 
                 const productId = this.dataset.productId;
+                const productName = this.dataset.productName;
+                const productPrice = this.dataset.productPrice;
                 
-                fetch('New-Arrival-Section.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'action=add_to_cart&product_id=' + productId
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        cartBadge.textContent = data.item_count;
-                        cartBadge.classList.add('updated');
-                        setTimeout(() => {
-                            cartBadge.classList.remove('updated');
-                        }, 300);
-                        
-                        const originalText = this.textContent;
-                        this.textContent = '✓ Added!';
-                        this.style.background = '#27ae60';
-                        
-                        setTimeout(() => {
-                            this.textContent = originalText;
-                            this.style.background = '';
-                        }, 2000);
-                    } else {
-                        alert(data.message || 'Error adding to cart');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error adding to cart:', error);
-                    alert('Error adding to cart. Please try again.');
-                });
+                addToCart(productId, productName, productPrice, this);
             });
         });
         
+        function addToCart(productId, productName, productPrice, button = null) {
+            fetch('New-Arrival-Section.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=add_to_cart&product_id=' + productId
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    cartBadge.textContent = data.item_count;
+                    cartBadge.classList.add('updated');
+                    setTimeout(() => {
+                        cartBadge.classList.remove('updated');
+                    }, 300);
+                    
+                    // Update button on card
+                    if (button) {
+                        const originalText = button.textContent;
+                        const originalBackground = button.style.background;
+                        button.textContent = '✓ Added!';
+                        button.style.background = '#27ae60';
+                        button.style.color = 'white';
+                        
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.style.background = originalBackground;
+                            button.style.color = '';
+                        }, 2000);
+                    }
+                    
+                    // Show success notification
+                    showNotification('Product added to cart successfully!', 'success');
+                } else {
+                    showNotification(data.message || 'Error adding to cart', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding to cart:', error);
+                showNotification('Error adding to cart. Please try again.', 'error');
+            });
+        }
+        
+        // Notification function (same as landing page)
+        function showNotification(message, type = 'success') {
+            // Remove existing notification
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        // Initialize cart badge on page load
         updateCartBadge();
     });
     </script>

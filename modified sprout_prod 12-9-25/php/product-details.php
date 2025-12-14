@@ -3,26 +3,21 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header("Location: Login-Form.php");
+    echo '<script>
+        alert("⚠️\\n\\nPlease log in first!");
+        window.location.href = "Login-Form.php";
+    </script>';
     exit();
 }
 
-// Check if user is admin (prevent admin from accessing user pages)
+// Check if user is admin - deny access if they are
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
-    header("Location: Admin-Dashboard.php");
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nThis page is only for regular users!");
+        window.location.href = "admin-dashboard.php"; // Redirect to admin dashboard
+    </script>';
     exit();
 }
-
-// Check session timeout (30 minutes)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
-    session_unset();
-    session_destroy();
-    header("Location: Login-Form.php?error=session_expired");
-    exit();
-}
-
-// Update session time on activity
-$_SESSION['login_time'] = time();
 
 // Database configuration
 $host = "localhost";
@@ -30,10 +25,8 @@ $username = "root";
 $password = "";
 $dbname = "sprout_productions";
 
-// Create connection
 $conn = new mysqli($host, $username, $password, $dbname);
 
-// Check connection
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);  
 }
@@ -41,444 +34,479 @@ if ($conn->connect_error) {
 // Get product ID from URL
 $productId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
-if ($productId <= 0) {
-    header("Location: Landing-Page-Section.php");
-    exit();
+// Handle AJAX cart operations
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'];
+    
+    if ($action === 'add_to_cart') {
+        header('Content-Type: application/json');
+        
+        $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+        $productId = isset($_POST['product_id']) ? intval($_POST['product_id']) : 0;
+        $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+        
+        if (!$userId) {
+            echo json_encode(['success' => false, 'message' => 'User not found']);
+            exit();
+        }
+        
+        if ($productId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid product']);
+            exit();
+        }
+        
+        // Check if product exists and has stock
+        $checkProductQuery = "SELECT * FROM products WHERE id = ?";
+        $stmt = $conn->prepare($checkProductQuery);
+        $stmt->bind_param("i", $productId);
+        $stmt->execute();
+        $productResult = $stmt->get_result();
+        
+        if ($productResult->num_rows === 0) {
+            echo json_encode(['success' => false, 'message' => 'Product not found']);
+            exit();
+        }
+        
+        $product = $productResult->fetch_assoc();
+        
+        // Check stock
+        if ($product['stock'] < $quantity) {
+            echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
+            exit();
+        }
+        
+        // Check if product already in cart
+        $checkCartQuery = "SELECT * FROM user_cart WHERE user_id = ? AND product_id = ?";
+        $stmt = $conn->prepare($checkCartQuery);
+        $stmt->bind_param("ii", $userId, $productId);
+        $stmt->execute();
+        $cartResult = $stmt->get_result();
+        
+        if ($cartResult->num_rows > 0) {
+            // Update quantity
+            $updateQuery = "UPDATE user_cart SET quantity = quantity + ? WHERE user_id = ? AND product_id = ?";
+            $stmt = $conn->prepare($updateQuery);
+            $stmt->bind_param("iii", $quantity, $userId, $productId);
+        } else {
+            // Insert new item
+            $insertQuery = "INSERT INTO user_cart (user_id, product_id, quantity) VALUES (?, ?, ?)";
+            $stmt = $conn->prepare($insertQuery);
+            $stmt->bind_param("iii", $userId, $productId, $quantity);
+        }
+        
+        if ($stmt->execute()) {
+            // Get updated cart count - COUNT DISTINCT PRODUCTS (not sum of quantities)
+            $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
+            $stmt = $conn->prepare($countQuery);
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            $countResult = $stmt->get_result();
+            $countData = $countResult->fetch_assoc();
+            
+            echo json_encode([
+                'success' => true,
+                'message' => 'Product added to cart',
+                'item_count' => $countData['product_count'] ?? 0
+            ]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Failed to add to cart']);
+        }
+        exit();
+    }
+    
+    if ($action === 'get_cart_count') {
+        header('Content-Type: application/json');
+        $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+        
+        if ($userId) {
+            // Get cart count - COUNT DISTINCT PRODUCTS (not sum of quantities)
+            $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
+            $stmt = $conn->prepare($countQuery);
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            $countResult = $stmt->get_result();
+            $countData = $countResult->fetch_assoc();
+            
+            echo json_encode([
+                'success' => true,
+                'item_count' => $countData['product_count'] ?? 0
+            ]);
+        } else {
+            echo json_encode(['success' => false, 'item_count' => 0]);
+        }
+        exit();
+    }
 }
 
 // Fetch product details
-$productQuery = "SELECT * FROM products WHERE id = ?";
-$stmt = $conn->prepare($productQuery);
-$stmt->bind_param("i", $productId);
-$stmt->execute();
-$productResult = $stmt->get_result();
-
-if ($productResult->num_rows === 0) {
-    header("Location: Landing-Page-Section.php");
+$product = null;
+if ($productId > 0) {
+    $productQuery = "SELECT * FROM products WHERE id = ?";
+    $stmt = $conn->prepare($productQuery);
+    $stmt->bind_param("i", $productId);
+    $stmt->execute();
+    $productResult = $stmt->get_result();
+    
+    if ($productResult->num_rows > 0) {
+        $product = $productResult->fetch_assoc();
+    } else {
+        // Product not found, redirect to shop
+        header('Location: Best-Sellers-Section.php');
+        exit();
+    }
+    $stmt->close();
+} else {
+    // No product ID provided, redirect to shop
+    header('Location: Best-Sellers-Section.php');
     exit();
 }
 
-$product = $productResult->fetch_assoc();
-
-// Get cart count
+// Get cart count for display
 $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
 $cartCount = 0;
 
 if ($userId) {
-    $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+    $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
     $stmt = $conn->prepare($countQuery);
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $countResult = $stmt->get_result();
     $countData = $countResult->fetch_assoc();
-    $cartCount = $countData['total_items'] ?? 0;
+    $cartCount = $countData['product_count'] ?? 0;
+    $stmt->close();
 }
 
-// Fetch related products (same category, excluding current product)
-$category = $product['category'];
-$relatedQuery = "SELECT * FROM products WHERE category = ? AND id != ? ORDER BY RAND() LIMIT 4";
-$stmt = $conn->prepare($relatedQuery);
-$stmt->bind_param("si", $category, $productId);
+// Fetch recommended products (excluding current product)
+$recommendedQuery = "SELECT * FROM products WHERE id != ? ORDER BY RAND() LIMIT 4";
+$stmt = $conn->prepare($recommendedQuery);
+$stmt->bind_param("i", $productId);
 $stmt->execute();
-$relatedResult = $stmt->get_result();
-?>
+$recommendedResult = $stmt->get_result();
 
+// Calculate prices
+$isDiscounted = isset($product['is_discounted']) ? $product['is_discounted'] == 1 : false;
+$discountPercent = isset($product['discount_percent']) ? $product['discount_percent'] : 0;
+$originalPrice = isset($product['price']) ? $product['price'] : 0;
+$discountPrice = $isDiscounted ? $originalPrice * (1 - $discountPercent / 100) : $originalPrice;
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($product['name']); ?> - Sprout Productions</title>
-    <link rel="stylesheet" href="../css/prod-det-sec.css">
+    <link rel="stylesheet" href="../css/land-pag-sec.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="../images/sprout logo bg-removed 3.png">
     <style>
-        /* Custom styles to match your design */
-        .header-top {
-            background: #000;
-            color: #fff;
-            padding: 10px 0;
-            text-align: center;
-            font-size: 14px;
-        }
-        
-        .header-top a {
-            color: #fff;
-            text-decoration: underline;
-            margin-left: 5px;
-        }
-        
-        .header-main {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px;
-            background: #fff;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .logo a {
-            color: #000;
-            text-decoration: none;
-        }
-        
-        .logo img {
-            width: 40px;
-            height: 40px;
-        }
-        
-        .nav-menu {
-            display: flex;
-            list-style: none;
-            gap: 30px;
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+
+        /* Page Header */
+        .page-header {
+            text-align: center;
+            padding: 40px 20px 20px;
+            background-color: #f5f5f5;
         }
         
-        .nav-menu a {
-            text-decoration: none;
-            color: #333;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
-        
-        .nav-menu a:hover {
-            color: #000;
-        }
-        
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .search-bar {
-            display: flex;
-            align-items: center;
-            background: #f5f5f5;
-            padding: 8px 15px;
-            border-radius: 20px;
-        }
-        
-        .search-bar img {
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-        }
-        
-        .search-bar input {
-            border: none;
-            background: none;
-            outline: none;
-            width: 200px;
-        }
-        
-        .header-icons {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .icon-placeholder {
-            cursor: pointer;
-        }
-        
-        .icon-placeholder img {
-            width: 24px;
-            height: 24px;
+        .page-header h1 {
+            font-family: 'Georgia', serif;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
         }
         
         .breadcrumb {
-            padding: 20px;
-            background: #f9f9f9;
             font-size: 14px;
             color: #666;
+            margin-top: 10px;
         }
         
+        .breadcrumb a {
+            color: #666;
+            text-decoration: none;
+        }
+        
+        .breadcrumb a:hover {
+            color: #000;
+        }
+
         /* Product Container */
         .product-container {
+            max-width: 1200px;
+            margin: 0 auto 60px;
+            padding: 40px 20px;
             display: grid;
-            grid-template-columns: 80px 1fr 400px;
-            gap: 40px;
-            padding: 40px;
-            max-width: 1400px;
-            margin: 0 auto;
+            grid-template-columns: 80px 1fr 1fr;
+            gap: 30px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
-        
-        @media (max-width: 1024px) {
-            .product-container {
-                grid-template-columns: 1fr;
-                gap: 30px;
-            }
-            
-            .thumbnails {
-                order: 2;
-                display: flex;
-                flex-direction: row !important;
-                justify-content: center;
-                gap: 15px;
-            }
-            
-            .thumbnails .thumbnail {
-                width: 80px;
-                height: 80px;
-            }
-            
-            .main-image {
-                order: 1;
-            }
-            
-            .product-info {
-                order: 3;
-            }
-        }
-        
+
         .thumbnails {
             display: flex;
             flex-direction: column;
             gap: 15px;
         }
-        
+
         .thumbnail {
             width: 80px;
             height: 80px;
-            border: 2px solid #ddd;
+            border: 2px solid #e5e7eb;
             border-radius: 8px;
             cursor: pointer;
             overflow: hidden;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            background: #f9fafb;
         }
-        
+
         .thumbnail.active {
             border-color: #000;
         }
-        
-        .thumbnail .image-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
+
         .thumbnail img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        
+
         .main-image {
-            text-align: center;
-        }
-        
-        .image-placeholder-large {
-            max-width: 600px;
-            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9fafb;
             border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            padding: 20px;
+            min-height: 500px;
         }
-        
-        .image-placeholder-large img {
-            width: 100%;
-            height: auto;
-            max-height: 600px;
+
+        .main-image img {
+            max-width: 100%;
+            max-height: 500px;
             object-fit: contain;
         }
-        
-        .product-info h1 {
-            font-size: 32px;
-            margin-bottom: 15px;
-            color: #333;
+
+        .product-info {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        
-        .rating {
+
+        .product-info h1 {
+            font-family: 'Georgia', serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: #000;
+        }
+
+        .product-rating {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 20px;
         }
-        
+
         .stars {
-            color: #ffd700;
-            font-size: 20px;
+            display: flex;
+            gap: 4px;
         }
-        
-        .star {
-            display: inline-block;
+
+        .star-filled,
+        .star-empty {
+            width: 20px;
+            height: 20px;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         }
-        
-        .star.filled {
-            color: #ffd700;
+
+        .star-filled {
+            background-color: #ffd700;
         }
-        
-        .star.half {
-            position: relative;
-            color: #ddd;
+
+        .star-empty {
+            background-color: #e0e0e0;
         }
-        
-        .star.half:before {
-            content: '★';
-            position: absolute;
-            left: 0;
-            width: 50%;
-            overflow: hidden;
-            color: #ffd700;
-        }
-        
-        .rating-number {
+
+        .rating-count {
             color: #666;
             font-size: 14px;
         }
-        
-        .price-section {
+
+        .product-price {
             display: flex;
             align-items: center;
-            gap: 15px;
-            margin-bottom: 25px;
+            gap: 10px;
+            padding: 15px 0;
+            border-bottom: 1px solid #e5e7eb;
         }
-        
-        .price-current {
+
+        .current-price {
             font-size: 32px;
-            font-weight: bold;
+            font-weight: 700;
             color: #000;
         }
-        
-        .price-original {
-            font-size: 20px;
+
+        .original-price {
+            font-size: 24px;
             color: #999;
             text-decoration: line-through;
         }
-        
+
         .discount-badge {
-            background: #c62828;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
+            background-color: #ffe0e0;
+            color: #ff4444;
+            padding: 4px 12px;
+            border-radius: 16px;
             font-size: 14px;
             font-weight: bold;
         }
-        
+
         .description {
             color: #666;
-            line-height: 1.6;
-            margin-bottom: 30px;
-            font-size: 16px;
+            line-height: 1.8;
+            font-size: 15px;
         }
-        
+
         .size-section {
-            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid #e5e7eb;
         }
-        
+
         .size-section label {
             display: block;
-            margin-bottom: 10px;
-            font-weight: 500;
-            color: #333;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #000;
         }
-        
+
         .size-buttons {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }
-        
+
         .size-btn {
             padding: 10px 20px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s;
-            min-width: 60px;
-            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
-        
+
         .size-btn:hover {
-            border-color: #999;
-        }
-        
-        .size-btn.active {
             border-color: #000;
-            background: #000;
-            color: white;
         }
-        
+
+        .size-btn.active {
+            background: #000;
+            color: #fff;
+            border-color: #000;
+        }
+
         .cart-section {
             display: flex;
-            gap: 20px;
-            align-items: center;
-            margin-top: 30px;
+            gap: 15px;
+            padding-top: 20px;
         }
-        
+
         .quantity-selector {
             display: flex;
             align-items: center;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            overflow: hidden;
+            gap: 20px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 2rem;
+            padding: 12px 24px;
         }
-        
+
         .qty-btn {
-            padding: 10px 15px;
-            background: #f5f5f5;
+            background: none;
             border: none;
+            font-size: 20px;
             cursor: pointer;
-            font-size: 18px;
-            transition: background 0.3s;
+            color: #666;
+            transition: color 0.3s ease;
         }
-        
+
         .qty-btn:hover {
-            background: #e9e9e9;
+            color: #000;
         }
-        
+
         .qty-number {
-            padding: 0 20px;
-            font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
+            min-width: 30px;
+            text-align: center;
         }
-        
+
         .add-to-cart-btn {
             flex: 1;
-            padding: 15px;
+            padding: 14px;
             background: #000;
-            color: white;
+            color: #fff;
             border: none;
-            border-radius: 6px;
+            border-radius: 2rem;
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s ease;
         }
-        
-        .add-to-cart-btn:hover {
+
+        .add-to-cart-btn:hover:not(:disabled) {
             background: #333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
-        
+
         .add-to-cart-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
+
+        /* Stock badge */
+        .stock-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
         
+        .in-stock {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .out-of-stock {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
         /* Tabs */
         .tabs-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 40px;
+            max-width: 1200px;
+            margin: 0 auto 40px;
+            padding: 0 20px;
         }
-        
+
         .tabs {
             display: flex;
-            border-bottom: 2px solid #eee;
+            gap: 20px;
+            border-bottom: 2px solid #e5e7eb;
         }
-        
+
         .tab {
             padding: 15px 30px;
             background: none;
@@ -488,13 +516,19 @@ $relatedResult = $stmt->get_result();
             color: #666;
             cursor: pointer;
             position: relative;
+            transition: color 0.3s ease;
         }
-        
-        .tab.active {
+
+        .tab:hover {
             color: #000;
         }
-        
-        .tab.active:after {
+
+        .tab.active {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .tab.active::after {
             content: '';
             position: absolute;
             bottom: -2px;
@@ -503,272 +537,157 @@ $relatedResult = $stmt->get_result();
             height: 2px;
             background: #000;
         }
-        
+
         /* Details Container */
         .details-container {
+            max-width: 1200px;
+            margin: 0 auto 60px;
+            padding: 0 20px;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 40px;
-            max-width: 1400px;
-            margin: 40px auto;
-            padding: 0 40px;
         }
-        
-        @media (max-width: 768px) {
-            .details-container {
-                grid-template-columns: 1fr;
-            }
-        }
-        
+
         .info-section {
-            margin-bottom: 30px;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
         }
-        
+
         .info-section h3 {
-            font-size: 18px;
+            font-family: 'Georgia', serif;
+            font-size: 20px;
+            font-weight: 600;
             margin-bottom: 15px;
-            color: #333;
+            color: #000;
         }
-        
-        .info-section p, .info-section li {
+
+        .info-section p {
             color: #666;
-            line-height: 1.6;
+            line-height: 1.8;
             margin-bottom: 8px;
         }
-        
+
         .info-section ul {
-            padding-left: 20px;
+            list-style: none;
+            padding-left: 0;
         }
-        
-        .info-section li {
-            margin-bottom: 5px;
+
+        .info-section ul li {
+            color: #666;
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
         }
-        
+
+        .info-section ul li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
         /* Recommendations */
         .recommendations {
-            max-width: 1400px;
-            margin: 60px auto;
-            padding: 0 40px;
+            max-width: 1200px;
+            margin: 0 auto 60px;
+            padding: 0 20px;
         }
-        
+
         .recommendations h2 {
-            font-size: 24px;
-            margin-bottom: 30px;
-            color: #333;
+            font-family: 'Georgia', serif;
+            font-size: 32px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 40px;
+            color: #000;
+            letter-spacing: 1px;
         }
-        
+
         .product-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 30px;
         }
-        
-        @media (max-width: 1024px) {
-            .product-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        @media (max-width: 640px) {
-            .product-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
+
         .product-card {
-            background: white;
+            background: #fff;
             border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.3s, box-shadow 0.3s;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-        
+
         .product-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
         }
-        
-        .product-image-placeholder {
-            width: 100%;
-            height: 200px;
-            background: #f5f5f5;
-            border-radius: 8px;
-            margin-bottom: 15px;
+
+        .product-image {
+            height: 250px;
+            background: #f9fafb;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
-        
-        .product-image-placeholder img {
+
+        .product-image img {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover;
         }
-        
+
         .product-card h4 {
+            padding: 15px 15px 10px;
             font-size: 16px;
-            margin-bottom: 10px;
-            color: #333;
-            height: 40px;
-            overflow: hidden;
+            font-weight: 600;
+            color: #000;
         }
-        
+
         .card-rating {
+            padding: 0 15px;
             display: flex;
             align-items: center;
             gap: 5px;
             margin-bottom: 10px;
         }
-        
-        .rating-text {
-            font-size: 12px;
-            color: #666;
+
+        .card-rating .star-filled,
+        .card-rating .star-empty {
+            width: 16px;
+            height: 16px;
         }
-        
+
         .card-price {
+            padding: 0 15px 15px;
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
         }
-        
+
         .card-price .current {
-            font-size: 18px;
-            font-weight: bold;
+            font-size: 20px;
+            font-weight: 700;
             color: #000;
         }
-        
+
         .card-price .original {
-            font-size: 14px;
+            font-size: 16px;
             color: #999;
             text-decoration: line-through;
         }
-        
+
         .card-price .discount {
-            background: #c62828;
-            color: white;
-            padding: 3px 6px;
-            border-radius: 4px;
+            background-color: #ffe0e0;
+            color: #ff4444;
+            padding: 2px 8px;
+            border-radius: 16px;
             font-size: 12px;
+            font-weight: bold;
         }
-        
-        .view-more-btn {
-            width: 100%;
-            padding: 10px;
-            background: #000;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: background 0.3s;
-        }
-        
-        .view-more-btn:hover {
-            background: #333;
-        }
-        
-        .btn-icon {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            background: url('../images/eye-icon.png') no-repeat center;
-            background-size: contain;
-        }
-        
-        /* Footer */
-        .footer {
-            background: #000;
-            color: white;
-            padding: 60px 40px 30px;
-            margin-top: 60px;
-        }
-        
-        .footer-content {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 40px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        @media (max-width: 768px) {
-            .footer-content {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .footer-content {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        .footer-column h3 {
-            font-size: 16px;
-            margin-bottom: 20px;
-            color: white;
-        }
-        
-        .footer-description {
-            color: #ccc;
-            line-height: 1.6;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-        
-        .social-icons {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .social-icon-fb,
-        .social-icon-insta,
-        .social-icon-github,
-        .social-icon-twitter {
-            width: 30px;
-            height: 30px;
-            background: #333;
-            border-radius: 50%;
-        }
-        
-        .footer-links {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .footer-links li {
-            margin-bottom: 10px;
-        }
-        
-        .footer-links a {
-            color: #ccc;
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.3s;
-        }
-        
-        .footer-links a:hover {
-            color: white;
-        }
-        
-        .footer-bottom {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #333;
-            color: #ccc;
-            font-size: 14px;
-        }
-        
-        /* Notification */
+
+        /* Notification styles */
         .notification {
             position: fixed;
             top: 20px;
@@ -823,92 +742,102 @@ $relatedResult = $stmt->get_result();
             }
         }
         
-        /* Back to products link */
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #666;
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.3s;
+        /* Cart badge animation */
+        .icon-badge.updated {
+            transform: scale(1.2);
+            background-color: #27ae60;
         }
-        
-        .back-link:hover {
-            color: #000;
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .product-container {
+                grid-template-columns: 1fr;
+            }
+
+            .thumbnails {
+                flex-direction: row;
+                justify-content: center;
+            }
+
+            .details-container {
+                grid-template-columns: 1fr;
+            }
+
+            .product-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
-        
-        /* Stock status */
-        .stock-status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-        
-        .stock-in {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .stock-low {
-            background: #f39c12;
-            color: white;
-        }
-        
-        .stock-out {
-            background: #e74c3c;
-            color: white;
+
+        @media (max-width: 768px) {
+            .page-header h1 {
+                font-size: 36px;
+            }
+
+            .product-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Header Top -->
-    <div class="header-top">
-        Sign up and get 20% off your first order. <a href="../php/Register-Form.php">Sign Up Now</a>
-        <img src="../images/close_logo.png" alt="">
-    </div>
-
-    <!-- Main Header -->
-    <header class="header-main">
-        <div class="logo">
-            <a href="../php/Landing-Page-Section.php">SPROUT PRODUCTIONS</a>
-            <img src="../images/sprout logo bg-removed 3.png" alt="">
+    <!-- Fixed Header -->
+    <header class="sticky-header">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="container">
+                <div class="top-bar-content">
+                    <div class="user-info-with-icon">
+                        <img src="../images/user_logo.png" alt="User" class="user-icon-small">
+                        <span class="welcome-text">Welcome,</span>
+                        <span class="user-email"><?php echo htmlspecialchars($_SESSION['email']); ?> (<?php echo $_SESSION['role']; ?>)</span>
+                    </div>
+                    <div class="top-bar-actions">
+                        <a href="logout.php" class="logout-link-no-icon">Logout</a>
+                        <img src="../images/close_logo.png" alt="Close" class="close-icon">
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <nav>
-            <ul class="nav-menu">
-                <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
-                <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
-                <li><a href="Limited-Time-Offers.php">Limited-Time Offers</a></li>
-                <li><a href="my-orders.php">My Orders</a></li>
-            </ul>
-        </nav>
+        <!-- Main Navigation -->
+        <div class="main-navigation">
+            <div class="container">
+                <div class="nav-content">
+                    <div class="logo">
+                        <a href="Landing-Page-Section.php" class="logo-link">
+                            <img src="../images/sprout logo bg-removed 3.png" alt="Sprout Logo" class="logo-img">
+                            <span class="logo-text">SPROUT PRODUCTIONS</span>
+                        </a>
+                    </div>
 
-        <div class="header-right">
-            <div class="search-bar">
-                <img src="../images/Search_logo.png" alt="">
-                <input type="text" placeholder="Search for products...">
-            </div>
-            <div class="header-icons">
-                <a href="cart-section.php" class="icon-placeholder">
-                    <img src="../images/cart_logo.png" alt="">
-                    <?php if ($cartCount > 0): ?>
-                        <span style="position: absolute; top: -5px; right: -5px; background: #c62828; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px;"><?php echo $cartCount; ?></span>
-                    <?php endif; ?>
-                </a>
-                <div class="icon-placeholder">
-                    <img src="../images/user_logo.png" alt="">
+                    <nav class="center-nav">
+                        <ul class="nav-menu">
+                            <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
+                            <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
+                            <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
+                            <li><a href="my-orders.php">My Orders</a></li>
+                        </ul>
+                    </nav>
+
+                    <div class="right-nav">
+                        <div class="action-icons">
+                            <a href="cart-section.php" class="icon-link">
+                                <img src="../images/cart_logo.png" alt="Cart" class="nav-icon">
+                                <span id="cart-badge" class="icon-badge"><?php echo $cartCount; ?></span>
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Breadcrumb -->
-    <div class="breadcrumb">
-        <a href="Landing-Page-Section.php" class="back-link">← Back to Products</a>
-        <span>Product Details</span>
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1>PRODUCT DETAILS</h1>
+        <div class="breadcrumb">
+            <a href="Landing-Page-Section.php">Home</a> / <span><?php echo htmlspecialchars($product['name']); ?></span>
+        </div>
     </div>
 
     <!-- Main Product Section -->
@@ -916,107 +845,74 @@ $relatedResult = $stmt->get_result();
         <!-- Left: Thumbnails -->
         <div class="thumbnails">
             <div class="thumbnail active">
-                <div class="image-placeholder">
-                    <?php if (!empty($product['image_path'])): 
-                        $imagePath = $product['image_path'];
-                        if (strpos($imagePath, 'uploads/') === 0) {
-                            $displayPath = '../' . $imagePath;
-                        } else {
-                            $displayPath = '../' . $imagePath;
-                        }
-                    ?>
-                        <img src="<?php echo $displayPath; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
-                    <?php else: ?>
-                        <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f5f5f5; color: #666;">
-                            <i class="fas fa-image"></i>
-                        </div>
-                    <?php endif; ?>
-                </div>
+                <?php 
+                $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : '';
+                $displayPath = '';
+                
+                if (!empty($imagePath)) {
+                    if (strpos($imagePath, 'uploads/') === 0) {
+                        $displayPath = '../' . $imagePath;
+                    } else if (strpos($imagePath, '../uploads/') === 0) {
+                        $displayPath = $imagePath;
+                    } else if (strpos($imagePath, 'http') === 0) {
+                        $displayPath = $imagePath;
+                    } else {
+                        $displayPath = '../' . $imagePath;
+                    }
+                } else {
+                    $displayPath = '../images/new-arrival-section/Gradient.png';
+                }
+                ?>
+                <img src="<?php echo $displayPath; ?>" alt="Product Image" 
+                     onerror="this.onerror=null; this.src='../images/new-arrival-section/Gradient.png';">
             </div>
-            <!-- Add more thumbnails as needed -->
         </div>
 
         <!-- Center: Main Product Image -->
         <div class="main-image">
-            <div class="image-placeholder-large">
-                <?php if (!empty($product['image_path'])): 
-                    $imagePath = $product['image_path'];
-                    if (strpos($imagePath, 'uploads/') === 0) {
-                        $displayPath = '../' . $imagePath;
-                    } else {
-                        $displayPath = '../' . $imagePath;
-                    }
-                ?>
-                    <img src="<?php echo $displayPath; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" id="mainProductImage">
-                <?php else: ?>
-                    <div style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; color: #666; font-size: 16px;">
-                        <i class="fas fa-image fa-3x"></i>
-                        <div style="margin-left: 10px;">No image available</div>
-                    </div>
-                <?php endif; ?>
-            </div>
+            <img src="<?php echo $displayPath; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" 
+                 id="main-product-image"
+                 onerror="this.onerror=null; this.src='../images/new-arrival-section/Gradient.png';">
         </div>
 
         <!-- Right: Product Info -->
         <div class="product-info">
             <h1><?php echo htmlspecialchars($product['name']); ?></h1>
             
-            <?php
-            $isDiscounted = $product['is_discounted'] == 1;
-            $discountPercent = $product['discount_percent'];
-            $originalPrice = $product['price'];
-            $discountPrice = $originalPrice * (1 - $discountPercent / 100);
-            $stock = $product['stock'];
-            ?>
-            
+            <!-- Stock Status -->
+            <?php if ($product['stock'] > 0): ?>
+                <div class="stock-badge in-stock">In Stock (<?php echo $product['stock']; ?> available)</div>
+            <?php else: ?>
+                <div class="stock-badge out-of-stock">Out of Stock</div>
+            <?php endif; ?>
+
             <!-- Price -->
-            <div class="price-section">
+            <div class="product-price">
+                <span class="current-price">₱<?php echo number_format($discountPrice, 2); ?></span>
                 <?php if ($isDiscounted && $discountPercent > 0): ?>
-                    <span class="price-current">$<?php echo number_format($discountPrice, 2); ?></span>
-                    <span class="price-original">$<?php echo number_format($originalPrice, 2); ?></span>
+                    <span class="original-price">₱<?php echo number_format($originalPrice, 2); ?></span>
                     <span class="discount-badge">-<?php echo $discountPercent; ?>%</span>
-                <?php else: ?>
-                    <span class="price-current">$<?php echo number_format($originalPrice, 2); ?></span>
-                <?php endif; ?>
-                <?php if ($stock > 0): ?>
-                    <span class="stock-status <?php echo $stock > 10 ? 'stock-in' : 'stock-low'; ?>">
-                        <?php echo $stock > 10 ? 'In Stock' : 'Low Stock (' . $stock . ' left)'; ?>
-                    </span>
-                <?php else: ?>
-                    <span class="stock-status stock-out">Out of Stock</span>
                 <?php endif; ?>
             </div>
 
             <!-- Description -->
             <p class="description">
-                <?php echo !empty($product['description']) ? htmlspecialchars($product['description']) : 'No description available for this product.'; ?>
+                <?php echo htmlspecialchars($product['description'] ?? 'This product offers superior comfort and style.'); ?>
             </p>
-
-            <!-- Size Selector -->
-            <div class="size-section">
-                <label>Choose Size</label>
-                <div class="size-buttons">
-                    <button class="size-btn">Small</button>
-                    <button class="size-btn">Medium</button>
-                    <button class="size-btn active">Large</button>
-                    <button class="size-btn">X-Large</button>
-                </div>
-            </div>
 
             <!-- Quantity & Add to Cart -->
             <div class="cart-section">
                 <div class="quantity-selector">
-                    <button class="qty-btn" id="decreaseQty">-</button>
+                    <button class="qty-btn" id="decrease-qty">-</button>
                     <span class="qty-number" id="quantity">1</span>
-                    <button class="qty-btn" id="increaseQty">+</button>
+                    <button class="qty-btn" id="increase-qty">+</button>
                 </div>
                 <button class="add-to-cart-btn" 
-                        id="addToCartBtn"
+                        id="add-to-cart"
                         data-product-id="<?php echo $product['id']; ?>"
                         data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
-                        data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
-                        <?php echo ($stock <= 0) ? 'disabled' : ''; ?>>
-                    <?php echo ($stock > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
+                        <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                    <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
                 </button>
             </div>
         </div>
@@ -1026,6 +922,8 @@ $relatedResult = $stmt->get_result();
     <div class="tabs-container">
         <div class="tabs">
             <button class="tab active">Product Details</button>
+            <button class="tab">Rating & Reviews</button>
+            <button class="tab">FAQs</button>
         </div>
     </div>
 
@@ -1037,20 +935,23 @@ $relatedResult = $stmt->get_result();
             <section class="info-section">
                 <h3>Product Information</h3>
                 <p><strong>Name:</strong> <?php echo htmlspecialchars($product['name']); ?></p>
-                <p><strong>Category:</strong> <?php echo ucfirst(htmlspecialchars($product['category'])); ?></p>
-                <p><strong>Product ID:</strong> PROD-<?php echo str_pad($product['id'], 4, '0', STR_PAD_LEFT); ?></p>
-                <p><strong>Added:</strong> <?php echo date('F j, Y', strtotime($product['created_at'])); ?></p>
+                <p><strong>Material:</strong> 100% Premium Cotton</p>
+                <p><strong>Fabric Weight:</strong> 220 GSM (mid-heavy)</p>
+                <p><strong>Fit:</strong> Regular / Unisex</p>
+                <p><strong>Print Type:</strong> High-quality screen print</p>
+                <p><strong>Neckline:</strong> Crew neck</p>
+                <p><strong>Sleeve Length:</strong> Short sleeves</p>
             </section>
 
             <!-- Features -->
             <section class="info-section">
                 <h3>Features</h3>
                 <ul>
-                    <li>High-quality materials</li>
-                    <li>Premium construction</li>
-                    <li>Comfortable fit</li>
-                    <li>Durable design</li>
-                    <li>Easy to care for</li>
+                    <li>Durable ribbed neckline</li>
+                    <li>Eco-friendly ink used</li>
+                    <li>Pre-shrunk fabric to reduce washing shrinkage</li>
+                    <li>Reinforced stitching for longer wear</li>
+                    <li>Fade-resistant color</li>
                 </ul>
             </section>
 
@@ -1058,6 +959,7 @@ $relatedResult = $stmt->get_result();
             <section class="info-section">
                 <h3>Size & Fit</h3>
                 <p>True-to-size fit</p>
+                <p>Model is 5'9" and wearing Medium</p>
                 <p>Designed for everyday casual wear</p>
                 <p>Unisex sizing suitable for both men & women</p>
             </section>
@@ -1070,73 +972,72 @@ $relatedResult = $stmt->get_result();
                 <h3>Care Instructions</h3>
                 <p>Machine wash cold</p>
                 <p>Do not bleach</p>
-                <p>Tumble dry low</p>
-                <p>Iron on low heat if needed</p>
+                <p>Iron inside out</p>
+                <p>Hang or tumble dry low</p>
             </section>
 
             <!-- Shipping -->
             <section class="info-section">
                 <h3>Shipping</h3>
-                <p>Ships in 1-3 business days</p>
-                <p>Free shipping for orders over $50</p>
-                <p>Standard shipping: 3-7 business days</p>
+                <p>Ships in 1-3 days</p>
+                <p>Cash on delivery available</p>
+                <p>Free shipping for ₱1500+ orders</p>
             </section>
 
             <!-- Returns / Exchange -->
             <section class="info-section">
                 <h3>Returns / Exchange</h3>
-                <p>30-day return policy</p>
-                <p>Free size exchanges</p>
-                <p>Items must be unused and in original condition</p>
+                <p>7-day size exchange</p>
+                <p>Must be unused & unwashed</p>
             </section>
         </div>
     </div>
 
     <!-- You Might Also Like -->
-    <?php if ($relatedResult && $relatedResult->num_rows > 0): ?>
+    <?php if ($recommendedResult->num_rows > 0): ?>
     <section class="recommendations">
         <h2>You might also like</h2>
         <div class="product-grid">
-            <?php while($relatedProduct = $relatedResult->fetch_assoc()): ?>
+            <?php while($recommended = $recommendedResult->fetch_assoc()): ?>
                 <?php
-                $relatedIsDiscounted = $relatedProduct['is_discounted'] == 1;
-                $relatedDiscountPercent = $relatedProduct['discount_percent'];
-                $relatedOriginalPrice = $relatedProduct['price'];
-                $relatedDiscountPrice = $relatedOriginalPrice * (1 - $relatedDiscountPercent / 100);
+                $recIsDiscounted = $recommended['is_discounted'] == 1;
+                $recDiscountPercent = $recommended['discount_percent'];
+                $recOriginalPrice = $recommended['price'];
+                $recDiscountPrice = $recIsDiscounted ? $recOriginalPrice * (1 - $recDiscountPercent / 100) : $recOriginalPrice;
+                
+                $recImagePath = !empty($recommended['image_path']) ? htmlspecialchars($recommended['image_path']) : '';
+                $recDisplayPath = '';
+                
+                if (!empty($recImagePath)) {
+                    if (strpos($recImagePath, 'uploads/') === 0) {
+                        $recDisplayPath = '../' . $recImagePath;
+                    } else if (strpos($recImagePath, '../uploads/') === 0) {
+                        $recDisplayPath = $recImagePath;
+                    } else if (strpos($recImagePath, 'http') === 0) {
+                        $recDisplayPath = $recImagePath;
+                    } else {
+                        $recDisplayPath = '../' . $recImagePath;
+                    }
+                } else {
+                    $recDisplayPath = '../images/new-arrival-section/Gradient.png';
+                }
                 ?>
                 <div class="product-card">
-                    <div class="product-image-placeholder">
-                        <?php if (!empty($relatedProduct['image_path'])): 
-                            $relatedImagePath = $relatedProduct['image_path'];
-                            if (strpos($relatedImagePath, 'uploads/') === 0) {
-                                $relatedDisplayPath = '../' . $relatedImagePath;
-                            } else {
-                                $relatedDisplayPath = '../' . $relatedImagePath;
-                            }
-                        ?>
-                            <img src="<?php echo $relatedDisplayPath; ?>" alt="<?php echo htmlspecialchars($relatedProduct['name']); ?>">
-                        <?php else: ?>
-                            <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f5f5f5; color: #666;">
-                                <i class="fas fa-image"></i>
-                            </div>
-                        <?php endif; ?>
+                    <div class="product-image">
+                        <a href="product-details.php?id=<?php echo $recommended['id']; ?>">
+                            <img src="<?php echo $recDisplayPath; ?>" 
+                                 alt="<?php echo htmlspecialchars($recommended['name']); ?>"
+                                 onerror="this.onerror=null; this.src='../images/new-arrival-section/Gradient.png';">
+                        </a>
                     </div>
-                    <h4><?php echo htmlspecialchars($relatedProduct['name']); ?></h4>
+                    <h4><?php echo htmlspecialchars($recommended['name']); ?></h4>
                     <div class="card-price">
-                        <?php if ($relatedIsDiscounted && $relatedDiscountPercent > 0): ?>
-                            <span class="current">$<?php echo number_format($relatedDiscountPrice, 2); ?></span>
-                            <span class="original">$<?php echo number_format($relatedOriginalPrice, 2); ?></span>
-                            <span class="discount">-<?php echo $relatedDiscountPercent; ?>%</span>
-                        <?php else: ?>
-                            <span class="current">$<?php echo number_format($relatedOriginalPrice, 2); ?></span>
+                        <span class="current">₱<?php echo number_format($recDiscountPrice, 2); ?></span>
+                        <?php if ($recIsDiscounted && $recDiscountPercent > 0): ?>
+                            <span class="original">₱<?php echo number_format($recOriginalPrice, 2); ?></span>
+                            <span class="discount">-<?php echo $recDiscountPercent; ?>%</span>
                         <?php endif; ?>
                     </div>
-                    <a href="product-details.php?id=<?php echo $relatedProduct['id']; ?>">
-                        <button class="view-more-btn">
-                            <span class="btn-icon"></span>
-                            <span>View More</span>
-                        </button>
-                    </a>
                 </div>
             <?php endwhile; ?>
         </div>
@@ -1196,27 +1097,44 @@ $relatedResult = $stmt->get_result();
         </div>
     </footer>
 
-    <!-- JavaScript -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Quantity selector
-        const quantityElement = document.getElementById('quantity');
-        const decreaseBtn = document.getElementById('decreaseQty');
-        const increaseBtn = document.getElementById('increaseQty');
-        const addToCartBtn = document.getElementById('addToCartBtn');
+        // Quantity selector functionality
+        const qtyNumber = document.getElementById('quantity');
+        const decreaseBtn = document.getElementById('decrease-qty');
+        const increaseBtn = document.getElementById('increase-qty');
+        const addToCartBtn = document.getElementById('add-to-cart');
+        const cartBadge = document.getElementById('cart-badge');
         
-        let quantity = 1;
-        
+        // Quantity buttons
         decreaseBtn.addEventListener('click', function() {
-            if (quantity > 1) {
-                quantity--;
-                quantityElement.textContent = quantity;
+            let currentQty = parseInt(qtyNumber.textContent);
+            if (currentQty > 1) {
+                qtyNumber.textContent = currentQty - 1;
             }
         });
         
         increaseBtn.addEventListener('click', function() {
-            quantity++;
-            quantityElement.textContent = quantity;
+            let currentQty = parseInt(qtyNumber.textContent);
+            qtyNumber.textContent = currentQty + 1;
+        });
+        
+        // Thumbnail selector functionality
+        const thumbnails = document.querySelectorAll('.thumbnail');
+        thumbnails.forEach(thumb => {
+            thumb.addEventListener('click', function() {
+                thumbnails.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // Tab functionality
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
         });
         
         // Add to cart functionality
@@ -1225,13 +1143,13 @@ $relatedResult = $stmt->get_result();
             
             const productId = this.dataset.productId;
             const productName = this.dataset.productName;
-            const productPrice = this.dataset.productPrice;
+            const quantity = parseInt(qtyNumber.textContent);
             
-            addToCart(productId, productName, productPrice, quantity, this);
+            addToCart(productId, productName, quantity, this);
         });
         
-        function addToCart(productId, productName, productPrice, quantity, button) {
-            fetch('landing-page-section.php', {
+        function addToCart(productId, productName, quantity, button = null) {
+            fetch('product-details.php?id=<?php echo $productId; ?>', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1241,21 +1159,29 @@ $relatedResult = $stmt->get_result();
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Update button
-                    const originalText = button.innerHTML;
-                    button.innerHTML = '<i class="fas fa-check"></i> Added to Cart!';
-                    button.style.background = '#27ae60';
-                    
+                    cartBadge.textContent = data.item_count;
+                    cartBadge.classList.add('updated');
                     setTimeout(() => {
-                        button.innerHTML = originalText;
-                        button.style.background = '';
-                    }, 2000);
+                        cartBadge.classList.remove('updated');
+                    }, 300);
+                    
+                    // Update button on card
+                    if (button) {
+                        const originalText = button.textContent;
+                        const originalBackground = button.style.background;
+                        button.textContent = '✓ Added!';
+                        button.style.background = '#27ae60';
+                        button.style.color = 'white';
+                        
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.style.background = originalBackground;
+                            button.style.color = '';
+                        }, 2000);
+                    }
                     
                     // Show success notification
                     showNotification('Product added to cart successfully!', 'success');
-                    
-                    // Update cart count in header
-                    updateCartCount();
                 } else {
                     showNotification(data.message || 'Error adding to cart', 'error');
                 }
@@ -1266,8 +1192,9 @@ $relatedResult = $stmt->get_result();
             });
         }
         
-        function updateCartCount() {
-            fetch('landing-page-section.php', {
+        // Function to update cart badge
+        function updateCartBadge() {
+            fetch('product-details.php?id=<?php echo $productId; ?>', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1277,20 +1204,17 @@ $relatedResult = $stmt->get_result();
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // You can update a cart count display if you have one
-                    console.log('Cart count updated:', data.item_count);
+                    cartBadge.textContent = data.item_count;
+                    cartBadge.classList.add('updated');
+                    setTimeout(() => {
+                        cartBadge.classList.remove('updated');
+                    }, 300);
                 }
+            })
+            .catch(error => {
+                console.error('Error updating cart badge:', error);
             });
         }
-        
-        // Size buttons
-        const sizeButtons = document.querySelectorAll('.size-btn');
-        sizeButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                sizeButtons.forEach(btn => btn.classList.remove('active'));
-                this.classList.add('active');
-            });
-        });
         
         // Notification function
         function showNotification(message, type = 'success') {
@@ -1322,6 +1246,9 @@ $relatedResult = $stmt->get_result();
                 }
             }, 5000);
         }
+        
+        // Initialize cart badge on page load
+        updateCartBadge();
     });
     </script>
 

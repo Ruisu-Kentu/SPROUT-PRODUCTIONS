@@ -673,3 +673,577 @@ tr:hover {
         font-size: 13px;
     }
 }
+
+/* Additional styles for Customers page */
+
+/* Quick Action Button */
+.quick-action-btn {
+    background-color: #8B4513;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.quick-action-btn:hover {
+    background-color: #6B3410;
+    transform: translateY(-2px);
+}
+
+/* Table Scroll Container */
+.table-scroll-container {
+    position: relative;
+    overflow: hidden;
+}
+
+.table-container {
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    padding: 0 10px;
+    margin: 0 -10px;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.table-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #8B4513;
+    border-radius: 10px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #6B3410;
+}
+
+/* Action buttons in table */
+.action-btn {
+    background-color: #8B4513;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+    transition: background-color 0.3s;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.action-btn:hover {
+    background-color: #6B3410;
+}
+
+.action-btn i {
+    font-size: 11px;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-active {
+    background-color: #E8F5E9;
+    color: #4CAF50;
+}
+
+.status-inactive {
+    background-color: #FFF3E0;
+    color: #FF9800;
+}
+
+.status-pending {
+    background-color: #FFF3E0;
+    color: #FF9800;
+}
+
+/* Filter dropdown */
+select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+select:focus {
+    outline: none;
+    border-color: #8B4513;
+}
+
+/* Scroll indicators */
+.scroll-indicator {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(139, 69, 19, 0.9);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 10;
+}
+
+.table-scroll-container:hover .scroll-indicator {
+    opacity: 0.7;
+}
+
+.scroll-indicator:hover {
+    opacity: 1 !important;
+}
+
+.scroll-indicator.left {
+    left: 10px;
+}
+
+.scroll-indicator:not(.left) {
+    right: 10px;
+}
+
+.scroll-indicator i {
+    font-size: 18px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .scroll-indicator {
+        width: 30px;
+        height: 30px;
+    }
+    
+    .scroll-indicator i {
+        font-size: 14px;
+    }
+    
+    .quick-action-btn {
+        padding: 8px 15px;
+        font-size: 13px;
+    }
+    
+    .action-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    
+    .action-btn i {
+        margin-right: 3px;
+    }
+}
+
+/* Additional styles for Customers page - Facebook-style scrollbar */
+
+/* Table Wrapper for scrollable area */
+.table-wrapper {
+    position: relative;
+    max-height: 500px;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    background: white;
+}
+
+.table-container {
+    overflow-y: scroll;
+    max-height: 500px;
+    padding-right: 10px;
+    scroll-behavior: smooth;
+}
+
+/* Hide default scrollbar */
+.table-container::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+
+/* Action buttons in table */
+.action-btn {
+    background-color: #8B4513;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+    transition: all 0.3s;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+}
+
+.action-btn:hover {
+    background-color: #6B3410;
+    transform: translateY(-2px);
+}
+
+.action-btn i {
+    font-size: 14px;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-active {
+    background-color: #E8F5E9;
+    color: #4CAF50;
+    border: 1px solid #C8E6C9;
+}
+
+.status-inactive {
+    background-color: #FFF3E0;
+    color: #FF9800;
+    border: 1px solid #FFE0B2;
+}
+
+/* Table row hover effect */
+#customersTable tr:hover {
+    background-color: #f8f5f0;
+    transform: translateX(4px);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(139, 69, 19, 0.1);
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #8B4513;
+    color: white;
+    padding: 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #6B3410;
+}
+
+td {
+    padding: 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+    color: #333;
+}
+
+/* Quick Action Button */
+.quick-action-btn {
+    background: linear-gradient(135deg, #8B4513 0%, #6B3410 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    box-shadow: 0 3px 10px rgba(139, 69, 19, 0.2);
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(139, 69, 19, 0.3);
+}
+
+.quick-action-btn:active {
+    transform: translateY(0);
+}
+
+.quick-action-btn i {
+    margin-right: 8px;
+}
+
+/* Filter dropdown */
+select {
+    padding: 10px 15px;
+    border: 2px solid #8B4513;
+    border-radius: 6px;
+    background-color: white;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s;
+    min-width: 180px;
+}
+
+select:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-wrapper {
+        max-height: 400px;
+    }
+    
+    .table-container {
+        max-height: 400px;
+    }
+    
+    .scroll-slider-container {
+        width: 30px;
+    }
+    
+    .scroll-slider {
+        width: 5px;
+    }
+    
+    th, td {
+        padding: 12px 8px;
+        font-size: 13px;
+    }
+    
+    .action-btn {
+        padding: 6px 10px;
+        min-width: 32px;
+        height: 32px;
+    }
+    
+    .action-btn i {
+        font-size: 12px;
+    }
+    
+    .quick-action-btn {
+        padding: 10px 18px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .table-wrapper {
+        max-height: 350px;
+    }
+    
+    .table-container {
+        max-height: 350px;
+    }
+    
+    th, td {
+        padding: 10px 6px;
+        font-size: 12px;
+    }
+    
+    .status-badge {
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+}
+
+/* Additional styles for Customers page - Simplified */
+
+/* Action buttons in table */
+.action-btn {
+    background-color: #8B4513;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+    transition: all 0.3s;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+}
+
+.action-btn:hover {
+    background-color: #6B3410;
+}
+
+.action-btn i {
+    margin-right: 5px;
+    font-size: 12px;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-active {
+    background-color: #E8F5E9;
+    color: #4CAF50;
+}
+
+.status-inactive {
+    background-color: #FFF3E0;
+    color: #FF9800;
+}
+
+/* Quick Action Button */
+.quick-action-btn {
+    background-color: #8B4513;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+}
+
+.quick-action-btn:hover {
+    background-color: #6B3410;
+}
+
+.quick-action-btn i {
+    margin-right: 8px;
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background-color: #f9f9f9;
+    padding: 16px;
+    text-align: left;
+    color: #8B4513;
+    font-weight: 600;
+    border-bottom: 2px solid #8B4513;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    padding: 16px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+}
+
+tr:hover {
+    background-color: #f9f9f9;
+}
+
+/* Filter dropdown */
+select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+select:focus {
+    outline: none;
+    border-color: #8B4513;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-container {
+        margin: 0 -20px;
+        border-radius: 0;
+        border: none;
+    }
+    
+    table {
+        min-width: 100%;
+    }
+    
+    .action-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    
+    .action-btn i {
+        margin-right: 3px;
+        font-size: 11px;
+    }
+    
+    .quick-action-btn {
+        padding: 8px 15px;
+        font-size: 13px;
+    }
+    
+    th, td {
+        padding: 12px 8px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .action-btn {
+        padding: 5px 8px;
+        font-size: 10px;
+        margin-right: 3px;
+    }
+    
+    .action-btn i {
+        margin-right: 2px;
+        font-size: 10px;
+    }
+    
+    .status-badge {
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+}

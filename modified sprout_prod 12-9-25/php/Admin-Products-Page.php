@@ -20,9 +20,6 @@ if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
     exit();
 }
 
-// Update session time on activity
-$_SESSION['login_time'] = time();
-
 // Database connection
 $host = 'localhost';
 $username = 'root'; // Change if different

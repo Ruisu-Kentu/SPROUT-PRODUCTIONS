@@ -1,6 +1,34 @@
 <?php
 session_start();
 
+// Check if user is already logged in
+if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
+    // Redirect based on role with alert
+    if (isset($_SESSION['role'])) {
+        if ($_SESSION['role'] === 'admin') {
+            echo '<script>
+                alert("⚠️ Already Logged In\\n\\nYou are currently logged in as ADMINISTRATOR!\\nPlease logout first to access this page.");
+                window.location.href = "admin-dashboard.php";
+            </script>';
+            exit();
+        } else {
+            // Regular user - redirect to their dashboard/home page
+            echo '<script>
+                alert("⚠️ Already Logged In\\n\\nYou are currently logged in as USER!\\nPlease logout first to access this page.");
+                window.location.href = "Landing-Page-Section.php";
+            </script>';
+            exit();
+        }
+    } else {
+        // Role not set, redirect to default page
+        echo '<script>
+            alert("⚠️ Already Logged In\\n\\nYou are currently logged in!\\nPlease logout first to access this page.");
+            window.location.href = "Landing-Page-Section.php";
+        </script>';
+        exit();
+    }
+}
+
 // Database configuration
 $host = "localhost";
 $username = "root";
@@ -30,6 +58,7 @@ if (isset($_SESSION['registration_success'])) {
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = trim($_POST['email']);
     $password = $_POST['password'];
+    $remember_me = isset($_POST['remember_me']) ? true : false;
     
     if (empty($email) || empty($password)) {
         $message = "Please enter email and password!";
@@ -50,6 +79,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             // Store login time
             $_SESSION['login_time'] = time();
+            
+            // Store in session for remember me
+            if ($remember_me) {
+                $_SESSION['remember_me'] = true;
+                $_SESSION['remembered_email'] = $email;
+            }
             
             // Redirect to admin dashboard
             header("Location: Admin-Dashboard.php");
@@ -78,6 +113,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Store login time
                 $_SESSION['login_time'] = time();
                 
+                // Store in session for remember me
+                if ($remember_me) {
+                    $_SESSION['remember_me'] = true;
+                    $_SESSION['remembered_email'] = $email;
+                }
+                
                 // Redirect to user landing page
                 header("Location: Landing-Page-Section.php");
                 exit();
@@ -100,44 +141,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   <title>Sprout Productions - Login</title>
   <link rel="stylesheet" href="../css/login-form.css">
   <link rel="icon" href="../images/sprout logo bg-removed 3.png">
+  <style>
+    /* Add some styles for the remember me functionality */
+    .login-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+    .login-link label {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .check-small {
+        margin: 0;
+        cursor: pointer;
+        width: 16px;
+        height: 16px;
+    }
+    .remember-me-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+  </style>
 </head>
 
 <body>
   <div class="page-container">
-    <!-- Header -->
-    <header class="header-main">
-        <div class="logo">
-            <a href="Landing-Page-Section.php">SPROUT PRODUCTIONS</a>
-            <img src="../images/sprout logo bg-removed 3.png" alt="">
-        </div>
-
-        <nav>
-            <ul class="nav-menu">
-                <li><a href="#">New Arrivals</a></li>
-                <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
-                <li><a href="Limited-Time-Offers.php">Limited-Time Offers</a></li>
-            </ul>
-        </nav>
-
-        <div class="header-right">
-            <div class="search-bar">
-                <img src="../images/Search_logo.png" alt="">
-                <input type="text" placeholder="Search for products...">
-            </div>
-            <div class="header-icons">
-                <div class="icon-placeholder">
-                    <img src="../images/cart_logo.png" alt="">
-                </div>
-                <div class="icon-placeholder">
-                    <img src="../images/user_logo.png" alt="">
-                </div>
-            </div>
-        </div>
-    </header>
+  
 
     <!-- Breadcrumb -->
     <div class="breadcrumb">
-      <a href="#" class="breadcrumb-link">Home</a>
+      <a href="Landing-Page-Section.php" class="breadcrumb-link">Home</a>
       <span class="breadcrumb-separator">/</span>
       <span class="breadcrumb-current">Login</span>
     </div>
@@ -169,7 +207,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
               </div>
             <?php endif; ?>
 
-            <form method="POST" action="">
+            <form method="POST" action="" id="loginForm">
               <div class="form-group">
                 <label for="email" class="form-label">Email Address</label>
                 <div class="input-wrapper">
@@ -200,8 +238,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
               </div>
 
               <div class="login-link">
-                <label>Remember Me</label>
-                <input type="checkbox" class="check-small">
+                <div class="remember-me-container">
+                  <input type="checkbox" name="remember_me" id="remember_me" class="check-small">
+                  <label for="remember_me">Remember Me</label>
+                </div>
                 <a href="Forgot-Password.php">Forgot Password?</a>
               </div>
 
@@ -220,20 +260,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       </div>
     </main>
 
-    <!-- Footer -->
+   <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-column">
                 <h3>SPROUT PRODUCTIONS</h3>
                 <p class="footer-description">
-                    Proudly Bisaya. Proudly Bisdak. Style with Soul.
-                    Rooted in Bisaya Pride. Bisaya-Born. Culture-Worn.
+                    Proudly Bisaya. Proudly Bisdak. Style with Soul. Rooted in Bisaya Pride. Bisaya-Born. Culture-Worn.
                 </p>
                 <div class="social-icons">
-                    <div class="social-icon-fb"></div>
-                    <div class="social-icon-insta"></div>
-                    <div class="social-icon-github"></div>
-                    <div class="social-icon-twitter"></div>
+                    <div class="social-icon-fb">
+                        <img src="../images/facebook_logo.png" alt="">
+                    </div>
+                    <div class="social-icon-insta">
+                        <img src="../images/insta_logo.png" alt="">
+                    </div>
+                    <div class="social-icon-github">
+                        <img src="../images/github_logo.png" alt="">
+                    </div>
+                    <div class="social-icon-twitter">
+                        <img src="../images/twitter.png" alt="">
+                    </div>
                 </div>
             </div>
 
@@ -274,5 +321,85 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </footer>
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const rememberMeCheckbox = document.getElementById('remember_me');
+        const loginForm = document.getElementById('loginForm');
+        
+        // Check if there's a remembered email in localStorage
+        const rememberedEmail = localStorage.getItem('rememberedUser');
+        
+        if (rememberedEmail) {
+            emailInput.value = rememberedEmail;
+            rememberMeCheckbox.checked = true;
+            // Focus on password field for quick entry
+            passwordInput.focus();
+        }
+        
+        // Handle email input changes
+        emailInput.addEventListener('input', function() {
+            const currentEmail = emailInput.value.trim();
+            const storedEmail = localStorage.getItem('rememberedUser');
+            
+            if (storedEmail && currentEmail === storedEmail) {
+                // If user types the exact remembered email, check the box
+                rememberMeCheckbox.checked = true;
+                // Focus on password field
+                passwordInput.focus();
+            } else if (!rememberMeCheckbox.checked && storedEmail) {
+                // If checkbox is unchecked but there's stored email, remove it from localStorage
+                localStorage.removeItem('rememberedUser');
+            }
+        });
+        
+        // Handle email field blur (when user leaves the field)
+        emailInput.addEventListener('blur', function() {
+            const currentEmail = emailInput.value.trim();
+            const storedEmail = localStorage.getItem('rememberedUser');
+            
+            if (storedEmail && currentEmail === storedEmail) {
+                // If user enters the exact remembered email, check the box
+                rememberMeCheckbox.checked = true;
+                // Focus on password field
+                passwordInput.focus();
+            }
+        });
+        
+        // Handle checkbox changes
+        rememberMeCheckbox.addEventListener('change', function() {
+            const email = emailInput.value.trim();
+            
+            if (!this.checked) {
+                // If checkbox is unchecked, remove from localStorage
+                localStorage.removeItem('rememberedUser');
+            }
+        });
+        
+        // Handle form submission - save to localStorage if remember me is checked
+        loginForm.addEventListener('submit', function(e) {
+            const email = emailInput.value.trim();
+            
+            if (rememberMeCheckbox.checked && email) {
+                // Store email in localStorage when form is submitted with remember me checked
+                localStorage.setItem('rememberedUser', email);
+            } else if (!rememberMeCheckbox.checked) {
+                // Remove from localStorage when remember me is not checked
+                localStorage.removeItem('rememberedUser');
+            }
+            
+            // Form will submit normally
+            return true;
+        });
+        
+        // Email validation function
+        function validateEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+    });
+  </script>
 </body>
 </html>

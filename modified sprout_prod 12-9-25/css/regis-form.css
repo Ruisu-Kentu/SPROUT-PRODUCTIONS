@@ -1,3 +1,5 @@
+
+
     * {
       margin: 0;
       padding: 0;
@@ -374,166 +376,248 @@
       transform: translateY(1px);
     }
 
-   /* Footer */
-        .footer {
-            background-color: #f0f0f0;
-            padding: 60px 40px 30px;
-            margin-top: 60px;
-        }
+    /* Footer */
+          .footer {
+              background-color: #f0f0f0;
+              padding: 60px 40px 30px;
+              margin-top: 60px;
+          }
 
+          .footer-content {
+              max-width: 1200px;
+              margin: 0 auto;
+              display: grid;
+              grid-template-columns: 2fr 1fr 1fr 1fr;
+              gap: 60px;
+              margin-bottom: 40px;
+          }
+
+          .footer-column h3 {
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 20px;
+              letter-spacing: 1px;
+          }
+
+          .footer-description {
+              font-size: 13px;
+              color: #666;
+              line-height: 1.6;
+              margin-bottom: 20px;
+          }
+
+          .social-icons {
+              display: flex;
+              gap: 15px;
+          }
+
+          .social-icon {
+              width: 32px;
+              height: 32px;
+              border-radius: 50%;
+              background-color: #000;
+          }
+
+          .social-icon-fb{
+              width: 36px;
+              height: 36px;
+              border-radius: 50%;
+              background-color: #225bd6;
+              background-image: url(../images/facebook_logo.png);
+              background-size: cover;
+              background-position: center;
+          }
+
+          .social-icon-insta{
+              width: 36px;
+              height: 36px;
+              border-radius: 50%;
+              background-color: #3b5998;
+              background-image: url(../images/insta_logo.png);
+              background-size: cover;
+              background-position: center;
+          }
+
+          .social-icon-github{
+              width: 36px;
+              height: 36px;
+              border-radius: 50%;
+              background-color: #000000;
+              background-image: url(../images/github_logo.png);
+              background-size: cover;
+              background-position: center;
+          }
+
+          .social-icon-twitter{
+              width: 36px;
+              height: 36px;
+              border-radius: 50%;
+              background-color: #1da1f2;
+              background-image: url(../images/twitter.png);
+              background-size: cover;
+              background-position: center;
+          }
+
+        
+  /* ===== FOOTER ===== */
+  .footer {
+      background-color: #000;
+      color: #fff;
+      padding: 40px 20px 20px;
+  }
+
+  .footer-content {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding-bottom: 30px;
+      border-bottom: 1px solid #333;
+  }
+
+  .footer-column h3 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      font-family: 'Georgia', serif;
+  }
+
+  .footer-description {
+      color: #ccc;
+      line-height: 1.6;
+      margin-bottom: 20px;
+  }
+
+  .social-icons {
+      display: flex;
+      gap: 10px;
+  }
+
+  .social-icon-fb,
+  .social-icon-insta,
+  .social-icon-github,
+  .social-icon-twitter {
+      width: 30px;
+      height: 30px;
+      background-color: #333;
+      border-radius: 50%;
+      cursor: pointer;
+  }
+
+  .footer-links {
+      list-style: none;
+  }
+
+  .footer-links li {
+      margin-bottom: 8px;
+  }
+
+  .footer-links a {
+      color: #ccc;
+      text-decoration: none;
+      transition: color 0.2s;
+  }
+
+  .footer-links a:hover {
+      color: #fff;
+  }
+
+  .footer-bottom {
+      text-align: center;
+      padding-top: 20px;
+      color: #999;
+      font-size: 14px;
+      line-height: 1.6;
+  }
+          
+
+
+      /* Responsive Design */
+      @media (max-width: 1024px) {
+        .content-wrapper {
+          grid-template-columns: 1fr;
+        }
+        
+        .left-section {
+          border-right: none;
+          border-bottom: 1px solid #e0e0e0;
+        }
+        
         .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr;
-            gap: 60px;
-            margin-bottom: 40px;
+          grid-template-columns: 1fr 1fr;
         }
-
-        .footer-column h3 {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            letter-spacing: 1px;
+        
+        .nav {
+          gap: 1rem;
         }
-
-        .footer-description {
-            font-size: 13px;
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 20px;
-        }
-
-        .social-icons {
-            display: flex;
-            gap: 15px;
-        }
-
-        .social-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background-color: #000;
-        }
-
-        .social-icon-fb{
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #225bd6;
-            background-image: url(../images/facebook_logo.png);
-            background-size: cover;
-            background-position: center;
-        }
-
-         .social-icon-insta{
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #3b5998;
-            background-image: url(../images/insta_logo.png);
-            background-size: cover;
-            background-position: center;
-        }
-
-        .social-icon-github{
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #000000;
-            background-image: url(../images/github_logo.png);
-            background-size: cover;
-            background-position: center;
-        }
-
-        .social-icon-twitter{
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #1da1f2;
-            background-image: url(../images/twitter.png);
-            background-size: cover;
-            background-position: center;
-        }
-
-        .footer-links {
-            list-style: none;
-        }
-
-        .footer-links li {
-            margin-bottom: 12px;
-        }
-
-        .footer-links a {
-            text-decoration: none;
-            color: #666;
-            font-size: 13px;
-        }
-
-        .footer-links a:hover {
-            color: #000;
-        }
-
-        .footer-bottom {
-            border-top: 1px solid #ddd;
-            padding-top: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-        }
-
-
-    /* Responsive Design */
-    @media (max-width: 1024px) {
-      .content-wrapper {
-        grid-template-columns: 1fr;
       }
-      
-      .left-section {
-        border-right: none;
-        border-bottom: 1px solid #e0e0e0;
-      }
-      
-      .footer-content {
-        grid-template-columns: 1fr 1fr;
-      }
-      
-      .nav {
-        gap: 1rem;
-      }
-    }
 
-    @media (max-width: 768px) {
-      .header-content {
-        flex-direction: column;
-        gap: 1rem;
+      @media (max-width: 768px) {
+        .header-content {
+          flex-direction: column;
+          gap: 1rem;
+        }
+        
+        .nav {
+          width: 100%;
+          justify-content: space-around;
+        }
+        
+        .header-right {
+          width: 100%;
+          justify-content: center;
+        }
+        
+        .search-input {
+          width: 200px;
+        }
+        
+        .left-section,
+        .right-section {
+          padding: 2rem;
+        }
+        
+        .heading {
+          font-size: 1.75rem;
+        }
+        
+        .footer-content {
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
       }
-      
-      .nav {
-        width: 100%;
-        justify-content: space-around;
-      }
-      
-      .header-right {
-        width: 100%;
-        justify-content: center;
-      }
-      
-      .search-input {
-        width: 200px;
-      }
-      
-      .left-section,
-      .right-section {
-        padding: 2rem;
-      }
-      
-      .heading {
-        font-size: 1.75rem;
-      }
-      
-      .footer-content {
-        grid-template-columns: 1fr;
-        gap: 2rem;
-      }
-    }
+
+      /* Add these styles to your existing regis-form.css */
+
+select.form-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: white;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 40px;
+    cursor: pointer;
+}
+
+select.form-input:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+small {
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+    display: block;
+    font-style: italic;
+}
+
+/* Style for select options */
+select.form-input option {
+    padding: 8px;
+    font-size: 14px;
+}

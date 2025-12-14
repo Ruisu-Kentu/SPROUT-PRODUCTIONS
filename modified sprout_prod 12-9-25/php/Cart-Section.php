@@ -3,13 +3,19 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header("Location: Login-Form.php");
+    echo '<script>
+        alert("⚠️\\n\\nPlease log in first!");
+        window.location.href = "Login-Form.php";
+    </script>';
     exit();
 }
 
-// Check if user is admin (prevent admin from accessing cart)
+// Check if user is admin - deny access if they are
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
-    header("Location: Admin-Dashboard.php");
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nThis page is only for regular users!");
+        window.location.href = "admin-dashboard.php"; // Redirect to admin dashboard
+    </script>';
     exit();
 }
 
@@ -30,16 +36,30 @@ if ($conn->connect_error) {
 // Get user ID from session
 $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
 
-// Function to get cart count
+// Function to get cart count (COUNT OF DISTINCT PRODUCTS)
 function getCartCount($conn, $userId) {
-    $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+    $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
     $stmt = $conn->prepare($countQuery);
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $result = $stmt->get_result();
     $data = $result->fetch_assoc();
-    return $data['total_items'] ?? 0;
+    return $data['product_count'] ?? 0;
 }
+
+// Function to check if cart has items
+function hasCartItems($conn, $userId) {
+    $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
+    $stmt = $conn->prepare($countQuery);
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_assoc();
+    return ($data['product_count'] ?? 0) > 0;
+}
+
+// Get cart items count for the button
+$cartHasItems = $userId ? hasCartItems($conn, $userId) : false;
 
 // Handle AJAX requests for cart operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -60,7 +80,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 p.price, 
                 p.image_path, 
                 p.stock,
-                (uc.quantity * p.price) as item_total
+                p.is_discounted,
+                p.discount_percent,
+                (uc.quantity * p.price) as original_item_total,
+                CASE 
+                    WHEN p.is_discounted = 1 THEN p.price * (1 - p.discount_percent / 100)
+                    ELSE p.price
+                END as discounted_price,
+                CASE 
+                    WHEN p.is_discounted = 1 THEN uc.quantity * (p.price * (1 - p.discount_percent / 100))
+                    ELSE uc.quantity * p.price
+                END as discounted_item_total
             FROM user_cart uc
             JOIN products p ON uc.product_id = p.id
             WHERE uc.user_id = ?";
@@ -71,25 +101,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $result = $stmt->get_result();
             
             $cartItems = [];
-            $subtotal = 0;
+            $originalSubtotal = 0;
+            $discountedSubtotal = 0;
+            $totalItemCount = 0;
             
             while($item = $result->fetch_assoc()) {
                 $cartItems[] = $item;
-                $subtotal += $item['item_total'];
+                $originalSubtotal += $item['original_item_total'];
+                $discountedSubtotal += $item['discounted_item_total'];
+                $totalItemCount += $item['quantity'];
             }
             
-            $discount = $subtotal * 0.20; // 20% discount
+            // Calculate discounts - NO ADDITIONAL 20% DISCOUNT
+            $productDiscounts = $originalSubtotal - $discountedSubtotal; // Discounts from individual product discounts only
+            $totalDiscount = $productDiscounts; // No additional discount
+            
+            // Final calculations
             $shipping = 15; // Fixed shipping
-            $total = $subtotal - $discount + $shipping;
+            $total = $discountedSubtotal + $shipping; // No subtraction of additional discount
             
             echo json_encode([
                 'success' => true,
                 'cart' => $cartItems,
-                'subtotal' => $subtotal,
-                'discount' => $discount,
+                'original_subtotal' => $originalSubtotal,
+                'discounted_subtotal' => $discountedSubtotal,
+                'product_discounts' => $productDiscounts,
+                'total_discount' => $totalDiscount,
                 'shipping' => $shipping,
                 'total' => $total,
-                'item_count' => count($cartItems)
+                'product_count' => count($cartItems), // Number of distinct products
+                'total_items' => $totalItemCount, // Total quantity of all items
+                'has_items' => !empty($cartItems)
             ]);
             exit();
             
@@ -136,7 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($stmt->execute()) {
                     echo json_encode([
                         'success' => true,
-                        'cart_count' => getCartCount($conn, $userId)
+                        'cart_count' => getCartCount($conn, $userId), // Returns count of distinct products
+                        'has_items' => hasCartItems($conn, $userId)
                     ]);
                 } else {
                     echo json_encode(['success' => false, 'message' => 'Failed to update cart']);
@@ -154,7 +197,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($stmt->execute()) {
                 echo json_encode([
                     'success' => true,
-                    'cart_count' => getCartCount($conn, $userId)
+                    'cart_count' => getCartCount($conn, $userId), // Returns count of distinct products
+                    'has_items' => hasCartItems($conn, $userId)
                 ]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Failed to remove item']);
@@ -175,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get cart count for header display
+// Get cart count for header display (COUNT OF DISTINCT PRODUCTS)
 $cartCount = $userId ? getCartCount($conn, $userId) : 0;
 ?>
 <!DOCTYPE html>
@@ -239,17 +283,39 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             border-bottom: none;
         }
         
+        /* Cart item image styling */
         .cart-item-image {
             flex: 0 0 120px;
             height: 120px;
             border-radius: 8px;
             overflow: hidden;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .cart-item-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+        
+        .cart-item:hover .cart-item-image img {
+            transform: scale(1.05);
+        }
+        
+        /* Default image styling */
+        .default-cart-image {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+            color: #666;
+            font-size: 12px;
         }
         
         .cart-item-details {
@@ -284,11 +350,24 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             color: #c0392b;
         }
         
-        .cart-item-price {
+        /* Price styling */
+        .price-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+        }
+        
+        .original-price {
+            font-size: 14px;
+            color: #999;
+            text-decoration: line-through;
+        }
+        
+        .current-price {
             font-size: 16px;
-            color: #27ae60;
             font-weight: 600;
-            margin-bottom: 15px;
+            color: #27ae60;
         }
         
         .quantity-controls {
@@ -343,6 +422,18 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             color: #e74c3c;
             font-size: 14px;
             margin-top: 5px;
+        }
+        
+        /* Discount badge for cart items */
+        .cart-discount-badge {
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 5px;
+            text-transform: uppercase;
         }
         
         /* Empty Cart State */
@@ -499,6 +590,97 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             color: #666;
             font-size: 18px;
         }
+        
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        .notification-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .notification-error {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            margin-left: 15px;
+            font-size: 16px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Cart badge animation */
+        .icon-badge.updated {
+            transform: scale(1.2);
+            background-color: #27ae60;
+        }
+        
+        /* New summary styles */
+        .summary-details {
+            margin-bottom: 10px;
+        }
+        
+        .summary-breakdown {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        
+        .breakdown-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+        
+        /* Cart info badge */
+        .cart-info-badge {
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -567,15 +749,24 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             <!-- Order Summary -->
             <div class="order-summary" id="order-summary" style="display: none;">
                 <h2>Order Summary</h2>
+                
+                <!-- Cart info badge showing number of distinct products -->
+                <div id="cart-info-badge" class="cart-info-badge" style="display: none;">
+                    <i class="fas fa-shopping-cart"></i> <span id="product-count">0</span> distinct product(s) in cart
+                </div>
 
                 <div class="summary-lines">
                     <div class="summary-line">
-                        <span class="label">Subtotal</span>
-                        <span class="value" id="summary-subtotal">₱0</span>
+                        <span class="label">Original Subtotal</span>
+                        <span class="value" id="summary-original-subtotal">₱0</span>
                     </div>
                     <div class="summary-line">
-                        <span class="label">Discount</span>
-                        <span class="value discount" id="summary-discount">-₱0</span>
+                        <span class="label">Product Discounts</span>
+                        <span class="value discount" id="summary-product-discounts">-₱0</span>
+                    </div>
+                    <div class="summary-line">
+                        <span class="label">Discounted Subtotal</span>
+                        <span class="value" id="summary-discounted-subtotal">₱0</span>
                     </div>
                     <div class="summary-line">
                         <span class="label">Delivery Fee</span>
@@ -587,8 +778,37 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                     <span class="label">Total</span>
                     <span class="value" id="summary-total">₱0</span>
                 </div>
+                
+                <!-- Discount breakdown -->
+                <div class="summary-breakdown" id="discount-breakdown" style="display: none;">
+                    <div class="breakdown-line">
+                        <span>Original Subtotal:</span>
+                        <span id="breakdown-original">₱0</span>
+                    </div>
+                    <div class="breakdown-line">
+                        <span>Product Discounts:</span>
+                        <span style="color: #27ae60;" id="breakdown-product-discount">-₱0</span>
+                    </div>
+                    <div class="breakdown-line">
+                        <span>Discounted Subtotal:</span>
+                        <span id="breakdown-discounted">₱0</span>
+                    </div>
+                    <div class="breakdown-line">
+                        <span>Additional 20% Off:</span>
+                        <span style="color: #27ae60;" id="breakdown-additional">-₱0</span>
+                    </div>
+                    <div class="breakdown-line">
+                        <span>Delivery Fee:</span>
+                        <span>+₱15</span>
+                    </div>
+                    <div class="breakdown-line" style="font-weight: bold;">
+                        <span>Final Total:</span>
+                        <span id="breakdown-final">₱0</span>
+                    </div>
+                </div>
 
-                <button class="checkout-btn" id="checkout-btn" disabled>
+                <!-- UPDATED CHECKOUT BUTTON -->
+                <button class="checkout-btn" id="checkout-btn" <?php echo !$cartHasItems ? 'disabled' : ''; ?>>
                     Proceed to Checkout
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -662,6 +882,8 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
         const cartBadge = document.getElementById('cart-badge');
         const checkoutBtn = document.getElementById('checkout-btn');
         const clearCartBtn = document.getElementById('clear-cart-btn');
+        const cartInfoBadge = document.getElementById('cart-info-badge');
+        const productCountElement = document.getElementById('product-count');
         
         // Currency formatter
         const formatCurrency = (amount) => {
@@ -706,18 +928,29 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                 </div>
             `;
             orderSummary.style.display = 'none';
+            cartInfoBadge.style.display = 'none';
         }
         
         // Update cart display
         function updateCartDisplay(data) {
             const cart = data.cart || [];
             
-            // Update cart badge
-            cartBadge.textContent = data.item_count || 0;
+            // Update cart badge with product count (distinct products)
+            cartBadge.textContent = data.product_count || 0;
+            
+            // Update cart info badge
+            if (data.product_count > 0) {
+                productCountElement.textContent = data.product_count;
+                cartInfoBadge.style.display = 'block';
+            } else {
+                cartInfoBadge.style.display = 'none';
+            }
             
             // Update cart items display
             if (cart.length === 0) {
                 showEmptyCart();
+                // Disable checkout button when cart is empty
+                checkoutBtn.disabled = true;
                 return;
             }
             
@@ -728,19 +961,62 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                 const isOutOfStock = item.stock < item.quantity;
                 if (isOutOfStock) hasOutOfStockItems = true;
                 
+                // Calculate prices with discounts
+                const isDiscounted = item.is_discounted == 1;
+                const discountPercent = item.discount_percent || 0;
+                const originalPrice = parseFloat(item.price);
+                const discountedPrice = isDiscounted ? originalPrice * (1 - discountPercent / 100) : originalPrice;
+                const itemTotal = isDiscounted ? item.discounted_item_total : item.original_item_total;
+                
+                // Get image path
+                const imagePath = item.image_path || '';
+                let displayPath = '';
+                
+                if (imagePath) {
+                    if (imagePath.startsWith('uploads/')) {
+                        displayPath = '../' + imagePath;
+                    } else if (imagePath.startsWith('../uploads/')) {
+                        displayPath = imagePath;
+                    } else if (imagePath.startsWith('http')) {
+                        displayPath = imagePath;
+                    } else {
+                        displayPath = '../' + imagePath;
+                    }
+                }
+                
                 cartHTML += `
                     <div class="cart-item" data-product-id="${item.product_id}">
                         <div class="cart-item-image">
-                            <img src="${item.image_path || '../images/default-product.jpg'}" alt="${item.name}">
+                            ${imagePath ? 
+                                `<img src="${displayPath}" 
+                                      alt="${item.name}"
+                                      onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'default-cart-image\\'><i class=\\'fas fa-image\\'></i> No image</div>';">
+                                ` : 
+                                `<div class="default-cart-image">
+                                    <i class="fas fa-image"></i> No image
+                                </div>`
+                            }
                         </div>
                         <div class="cart-item-details">
                             <div class="cart-item-header">
-                                <h3 class="cart-item-name">${item.name}</h3>
+                                <div>
+                                    <h3 class="cart-item-name">${item.name}
+                                        ${isDiscounted && discountPercent > 0 ? 
+                                            `<span class="cart-discount-badge">-${discountPercent}% OFF</span>` : ''
+                                        }
+                                    </h3>
+                                    <div class="price-container">
+                                        ${isDiscounted && discountPercent > 0 ? 
+                                            `<span class="original-price">${formatCurrency(originalPrice)}</span>
+                                             <span class="current-price">${formatCurrency(discountedPrice)}</span>` :
+                                            `<span class="current-price">${formatCurrency(originalPrice)}</span>`
+                                        }
+                                    </div>
+                                </div>
                                 <button class="delete-btn" onclick="removeFromCart(${item.product_id})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
-                            <p class="cart-item-price">${formatCurrency(item.price)}</p>
                             ${isOutOfStock ? 
                                 `<p class="out-of-stock-message">
                                     <i class="fas fa-exclamation-circle"></i> 
@@ -758,7 +1034,7 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                             </div>
                         </div>
                         <div class="cart-item-total">
-                            ${formatCurrency(item.item_total)}
+                            ${formatCurrency(itemTotal)}
                         </div>
                     </div>
                 `;
@@ -778,10 +1054,26 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
         
         // Update order summary
         function updateOrderSummary(data) {
-            document.getElementById('summary-subtotal').textContent = formatCurrency(data.subtotal);
-            document.getElementById('summary-discount').textContent = formatCurrency(-data.discount);
+            // Update main summary lines
+            document.getElementById('summary-original-subtotal').textContent = formatCurrency(data.original_subtotal);
+            document.getElementById('summary-product-discounts').textContent = formatCurrency(-data.product_discounts);
+            document.getElementById('summary-discounted-subtotal').textContent = formatCurrency(data.discounted_subtotal);
             document.getElementById('summary-shipping').textContent = formatCurrency(data.shipping);
             document.getElementById('summary-total').textContent = formatCurrency(data.total);
+            
+            // Update breakdown
+            document.getElementById('breakdown-original').textContent = formatCurrency(data.original_subtotal);
+            document.getElementById('breakdown-product-discount').textContent = formatCurrency(-data.product_discounts);
+            document.getElementById('breakdown-discounted').textContent = formatCurrency(data.discounted_subtotal);
+            document.getElementById('breakdown-final').textContent = formatCurrency(data.total);
+            
+            // Show breakdown if there are discounts
+            const discountBreakdown = document.getElementById('discount-breakdown');
+            if (data.total_discount > 0) {
+                discountBreakdown.style.display = 'block';
+            } else {
+                discountBreakdown.style.display = 'none';
+            }
         }
         
         // Update quantity function
@@ -797,13 +1089,17 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             .then(data => {
                 if (data.success) {
                     loadCart();
+                    // Update cart badge
+                    cartBadge.textContent = data.cart_count || 0;
+                    // Show notification
+                    showNotification('Cart updated successfully!', 'success');
                 } else {
-                    alert(data.message || 'Error updating quantity');
+                    showNotification(data.message || 'Error updating quantity', 'error');
                 }
             })
             .catch(error => {
                 console.error('Error updating quantity:', error);
-                alert('Error updating quantity. Please try again.');
+                showNotification('Error updating quantity. Please try again.', 'error');
             });
         };
         
@@ -824,13 +1120,16 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             .then(data => {
                 if (data.success) {
                     loadCart();
+                    // Update cart badge
+                    cartBadge.textContent = data.cart_count || 0;
+                    showNotification('Item removed from cart', 'success');
                 } else {
-                    alert('Error removing item');
+                    showNotification('Error removing item', 'error');
                 }
             })
             .catch(error => {
                 console.error('Error removing item:', error);
-                alert('Error removing item. Please try again.');
+                showNotification('Error removing item. Please try again.', 'error');
             });
         };
         
@@ -851,14 +1150,16 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
             .then(data => {
                 if (data.success) {
                     loadCart();
-                    alert('Cart cleared successfully');
+                    // Update cart badge
+                    cartBadge.textContent = 0;
+                    showNotification('Cart cleared successfully', 'success');
                 } else {
-                    alert('Error clearing cart');
+                    showNotification('Error clearing cart', 'error');
                 }
             })
             .catch(error => {
                 console.error('Error clearing cart:', error);
-                alert('Error clearing cart. Please try again.');
+                showNotification('Error clearing cart. Please try again.', 'error');
             });
         });
         
@@ -879,17 +1180,50 @@ $cartCount = $userId ? getCartCount($conn, $userId) : 0;
                         const hasOutOfStockItems = data.cart.some(item => item.stock < item.quantity);
                         
                         if (hasOutOfStockItems) {
-                            alert('Some items in your cart are out of stock. Please update quantities before checkout.');
+                            showNotification('Some items in your cart are out of stock. Please update quantities before checkout.', 'error');
                             return;
                         }
                         
-                        // Proceed to checkout
-                        alert('Proceeding to checkout...');
-                        // window.location.href = 'checkout.php'; // Uncomment when you have checkout page
+                        // Proceed to checkout-section.php
+                        window.location.href = 'checkout-section.php';
                     }
                 });
+            } else {
+                // Show message when disabled button is clicked
+                showNotification('Your cart is empty or contains out-of-stock items. Please add items to proceed to checkout.', 'error');
             }
         });
+        
+        // Notification function
+        function showNotification(message, type = 'success') {
+            // Remove existing notification
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
         
         // Initialize cart on page load
         loadCart();

@@ -1,30 +1,6 @@
 <?php
 session_start();
 
-// Check if user is logged in
-if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    // Redirect to login if not logged in
-    header("Location: Login-Form.php");
-    exit();
-}
-
-// Check if user is admin (prevent admin from accessing user landing page)
-if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
-    header("Location: Admin-Dashboard.php");
-    exit();
-}
-
-// Check session timeout (30 minutes)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
-    session_unset();
-    session_destroy();
-    header("Location: Login-Form.php?error=session_expired");
-    exit();
-}
-
-// Update session time on activity
-$_SESSION['login_time'] = time();
-
 // Database configuration
 $host = "localhost";
 $username = "root";
@@ -39,27 +15,66 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);  
 }
 
+// Check if user is logged in
+$isLoggedIn = isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true;
+$isAdmin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+$isUser = isset($_SESSION['role']) && $_SESSION['role'] === 'user';
+
+// If user is logged in, check if they're admin - deny access if they are
+if ($isLoggedIn && $isAdmin) {
+    echo '<script>
+        alert("⛔ ACCESS DENIED\\n\\nThis page is only for regular users!");
+        window.location.href = "admin-dashboard.php"; // Redirect to admin dashboard
+    </script>';
+    exit();
+}
+
 // Fetch new arrivals (latest 4 products)
 $newArrivalsQuery = "SELECT * FROM products ORDER BY created_at DESC LIMIT 4";
 $newArrivalsResult = $conn->query($newArrivalsQuery);
 
-// Fetch best sellers (you might want to create a sales_count column or use order_items table)
-// For now, we'll fetch 4 random products as best sellers
-$bestSellersQuery = "SELECT * FROM products ORDER BY RAND() LIMIT 4";
+// Fetch best sellers - FIXED: Only show products with sold_count > 0
+$bestSellersQuery = "SELECT * FROM products WHERE sold_count > 0 ORDER BY sold_count DESC LIMIT 4";
 $bestSellersResult = $conn->query($bestSellersQuery);
 
-// Handle AJAX requests for cart operations
+// Fetch special offers - discounted products
+$specialOffersQuery = "SELECT * FROM products WHERE is_discounted = 1 AND discount_percent > 0 ORDER BY discount_percent DESC LIMIT 4";
+$specialOffersResult = $conn->query($specialOffersQuery);
+
+// Fetch ALL reviews with user information (using LEFT JOIN to include all reviews even if product info is missing)
+$reviewsQuery = "SELECT 
+                    sr.*, 
+                    u.email,
+                    p.name as product_name,
+                    p.image_path as product_image
+                 FROM sproutReviews sr
+                 LEFT JOIN users u ON sr.user_id = u.id
+                 LEFT JOIN products p ON sr.product_id = p.id
+                 ORDER BY sr.created_at DESC";
+$reviewsResult = $conn->query($reviewsQuery);
+
+// Store all reviews in an array
+$reviews = [];
+if ($reviewsResult && $reviewsResult->num_rows > 0) {
+    while($review = $reviewsResult->fetch_assoc()) {
+        $reviews[] = $review;
+    }
+}
+
+// Handle AJAX requests for cart operations (only if logged in as user)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
+    
+    // Only allow cart operations if user is logged in
+    if (!$isLoggedIn || !$isUser) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Please login as a user first']);
+        exit();
+    }
     
     switch ($action) {
         case 'add_to_cart':
             header('Content-Type: application/json');
-            
-            if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-                echo json_encode(['success' => false, 'message' => 'Please login first']);
-                exit();
-            }
             
             $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
             $productId = isset($_POST['product_id']) ? intval($_POST['product_id']) : 0;
@@ -114,8 +129,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
             
             if ($stmt->execute()) {
-                // Get updated cart count
-                $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+                // Get updated cart count - NUMBER OF DISTINCT PRODUCTS (not sum of quantities)
+                $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
                 $stmt = $conn->prepare($countQuery);
                 $stmt->bind_param("i", $userId);
                 $stmt->execute();
@@ -125,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 echo json_encode([
                     'success' => true,
                     'message' => 'Product added to cart',
-                    'item_count' => $countData['total_items'] ?? 0
+                    'item_count' => $countData['product_count'] ?? 0 // Changed to product_count
                 ]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Failed to add to cart']);
@@ -135,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'get_cart_count':
             header('Content-Type: application/json');
             
-            if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+            if (!$isLoggedIn || !$isUser) {
                 echo json_encode(['success' => false, 'item_count' => 0]);
                 exit();
             }
@@ -143,7 +158,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
             
             if ($userId) {
-                $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
+                // Get cart count - NUMBER OF DISTINCT PRODUCTS (not sum of quantities)
+                $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
                 $stmt = $conn->prepare($countQuery);
                 $stmt->bind_param("i", $userId);
                 $stmt->execute();
@@ -152,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 echo json_encode([
                     'success' => true,
-                    'item_count' => $countData['total_items'] ?? 0
+                    'item_count' => $countData['product_count'] ?? 0 // Changed to product_count
                 ]);
             } else {
                 echo json_encode(['success' => false, 'item_count' => 0]);
@@ -161,19 +177,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get cart count for display
-$userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+// Get cart count for display - only if logged in as user
 $cartCount = 0;
-
-if ($userId) {
-    $countQuery = "SELECT SUM(quantity) as total_items FROM user_cart WHERE user_id = ?";
-    $stmt = $conn->prepare($countQuery);
-    $stmt->bind_param("i", $userId);
-    $stmt->execute();
-    $countResult = $stmt->get_result();
-    $countData = $countResult->fetch_assoc();
-    $cartCount = $countData['total_items'] ?? 0;
-    $stmt->close();
+if ($isLoggedIn && $isUser) {
+    $userId = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+    if ($userId) {
+        $countQuery = "SELECT COUNT(*) as product_count FROM user_cart WHERE user_id = ?";
+        $stmt = $conn->prepare($countQuery);
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        $countResult = $stmt->get_result();
+        $countData = $countResult->fetch_assoc();
+        $cartCount = $countData['product_count'] ?? 0;
+        $stmt->close();
+    }
 }
 
 ?>
@@ -199,6 +216,48 @@ if ($userId) {
             height: 16px;
             filter: invert(1);
             opacity: 0.8;
+        }
+        
+        /* Login/Register buttons */
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .login-link, .register-link {
+            display: inline-block;
+            color: #fff;
+            text-decoration: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        .login-link {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        }
+        
+        .register-link {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+        
+        .login-link:hover {
+            background: linear-gradient(135deg, #4aa3df 0%, #3498db 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .register-link:hover {
+            background: linear-gradient(135deg, #48d68c 0%, #2ecc71 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
         }
         
         /* Logout button without icon */
@@ -299,6 +358,16 @@ if ($userId) {
             width: 100%;
         }
         
+        /* Disabled menu items for non-logged in users */
+        .nav-menu a.disabled-link {
+            color: #999;
+            cursor: not-allowed;
+        }
+        
+        .nav-menu a.disabled-link:hover::after {
+            width: 0;
+        }
+        
         /* Product grid responsiveness */
         @media (max-width: 1200px) {
             .products-grid {
@@ -389,17 +458,32 @@ if ($userId) {
             border-radius: 4px;
             cursor: pointer;
             margin-top: 10px;
-            font-weight: bold;
-            transition: background 0.3s ease;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            letter-spacing: 0.5px;
         }
         
         .add-to-cart-btn:hover {
             background: #333;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         
         .add-to-cart-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .add-to-cart-btn.login-required {
+            background: #666;
+        }
+        
+        .add-to-cart-btn.login-required:hover {
+            background: #777;
+            cursor: pointer;
         }
         
         /* Cart badge animation */
@@ -440,6 +524,38 @@ if ($userId) {
             text-transform: uppercase;
         }
         
+        /* Special offers badge */
+        .special-offer-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: linear-gradient(135deg, #ff4444 0%, #ff6b6b 100%);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 2;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+        
+        /* Best seller badge */
+        .best-seller-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 2;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+        
         .price-container {
             display: flex;
             align-items: center;
@@ -459,25 +575,52 @@ if ($userId) {
             color: #000;
         }
         
+        /* Special offers price styling */
+        .special-offers .current-price {
+            color: #ff4444;
+        }
+        
+        .special-offers .add-to-cart-btn {
+            background: #ff4444;
+        }
+        
+        .special-offers .add-to-cart-btn:hover {
+            background: #e63939;
+        }
+        
         /* View More Button */
         .view-more-btn {
-            margin-top: 8px;
-            padding: 8px 12px;
-            background: #f5f5f5;
-            color: #333;
-            border: 1px solid #ddd;
+            margin-top: 10px;
+            padding: 10px;
+            background: #2c3e50;
+            color: white;
+            border: none;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 14px;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
-            gap: 5px;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
         
         .view-more-btn:hover {
-            background: #e9e9e9;
-            border-color: #999;
+            background: #34495e;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(44, 62, 80, 0.2);
+        }
+        
+        .view-more-btn.login-required {
+            background: #666;
+        }
+        
+        .view-more-btn.login-required:hover {
+            background: #777;
+            cursor: pointer;
         }
         
         /* Notification styles */
@@ -505,6 +648,11 @@ if ($userId) {
         
         .notification-error {
             background: #e74c3c;
+            color: white;
+        }
+        
+        .notification-warning {
+            background: #f39c12;
             color: white;
         }
         
@@ -544,6 +692,321 @@ if ($userId) {
         .product-name-link:hover {
             color: #000;
         }
+        
+        /* Sold count for best sellers */
+        .sold-count {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            font-weight: 600;
+        }
+        
+        /* Section headers */
+        .section-title {
+            font-family: 'Georgia', serif;
+            font-size: 32px;
+            color: #000;
+            margin: 40px 0 30px;
+            text-align: center;
+        }
+        
+        /* Welcome message styles */
+        .welcome-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: white;
+        }
+        
+        .welcome-text {
+            font-weight: 500;
+        }
+        
+        .user-email {
+            font-weight: 600;
+            color: #f1c40f;
+        }
+        
+        .guest-welcome {
+            font-size: 14px;
+            color: white;
+            font-weight: 500;
+        }
+        
+        /* Disabled cart icon */
+        .icon-link.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .icon-link.disabled:hover {
+            transform: none;
+        }
+        
+        .guest-message {
+            color: #f1c40f;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .view-all a.login-required-link {
+            display: inline-block;
+            background: #666;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+        }
+
+        .view-all a.login-required-link:hover {
+            background: #777;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Style for regular View All link */
+        .view-all a:not(.login-required-link) {
+            display: inline-block;
+            background: #000;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+        }
+
+        .view-all a:not(.login-required-link):hover {
+            background: #333;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Updated Review Styles */
+        .customer-reviews {
+            padding: 60px 20px;
+            background: #f9f9f9;
+            margin-top: 60px;
+        }
+        
+        .reviews-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .reviews-navigation {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .nav-arrow {
+            width: 40px;
+            height: 40px;
+            background: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .nav-arrow:hover {
+            background: #000;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .reviews-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .review-slider {
+            display: flex;
+            transition: transform 0.5s ease;
+            width: 100%;
+        }
+        
+        .review-card {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            min-width: 300px;
+            flex-shrink: 0;
+        }
+        
+        .review-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        }
+        
+        .review-stars {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .star-filled {
+            color: #FFD700;
+            font-size: 20px;
+        }
+        
+        .star-filled::before {
+            content: "★";
+        }
+        
+        .reviewer-name {
+            font-weight: 600;
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .verified-badge {
+            width: 16px;
+            height: 16px;
+            background: #27ae60;
+            border-radius: 50%;
+            position: relative;
+        }
+        
+        .verified-badge::after {
+            content: "✓";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .review-text {
+            color: #666;
+            line-height: 1.6;
+            font-size: 15px;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        
+        .review-date {
+            font-size: 12px;
+            color: #999;
+            margin-top: 15px;
+        }
+        
+        .review-product {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .product-thumbnail {
+            width: 50px;
+            height: 50px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .product-thumbnail img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+        
+        .product-name {
+            font-size: 13px;
+            color: #666;
+            max-width: 200px;
+        }
+        
+        .review-empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 50px 20px;
+        }
+        
+        .review-empty-state p {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .write-review-btn {
+            display: inline-block;
+            background: #27ae60;
+            color: white;
+            padding: 10px 25px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .write-review-btn:hover {
+            background: #2ecc71;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3);
+        }
+        
+        .reviewer-email {
+            font-size: 13px;
+            color: #888;
+            margin-top: 5px;
+            font-style: normal;
+        }
+        
+        /* Review slider navigation */
+        .nav-arrow.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .nav-arrow.disabled:hover {
+            background: #fff;
+            color: #333;
+            transform: none;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -553,15 +1016,34 @@ if ($userId) {
         <div class="top-bar">
             <div class="container">
                 <div class="top-bar-content">
-                    <div class="user-info-with-icon">
-                        <img src="../images/user_logo.png" alt="User" class="user-icon-small">
-                        <span class="welcome-text">Welcome,</span>
-                        <span class="user-email"><?php echo htmlspecialchars($_SESSION['email']); ?> (<?php echo $_SESSION['role']; ?>)</span>
-                    </div>
+                    <?php if ($isLoggedIn && $isUser): ?>
+                        <div class="user-info-with-icon">
+                            <img src="../images/user_logo.png" alt="User" class="user-icon-small">
+                            <span class="welcome-text">Welcome,</span>
+                            <span class="user-email"><?php echo htmlspecialchars($_SESSION['email']); ?> (User)</span>
+                        </div>
+                    <?php else: ?>
+                        <div class="guest-welcome">
+                            <i class="fas fa-user" style="margin-right: 8px;"></i>
+                            <span class="guest-message">Welcome Guest! Please login to access all features.</span>
+                        </div>
+                    <?php endif; ?>
+                    
                     <div class="top-bar-actions">
-                        <a href="logout.php" class="logout-link-no-icon">
-                            Logout
-                        </a>
+                        <?php if ($isLoggedIn && $isUser): ?>
+                            <a href="logout.php" class="logout-link-no-icon">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        <?php else: ?>
+                            <div class="auth-buttons">
+                                <a href="Login-Form.php" class="login-link">
+                                    <i class="fas fa-sign-in-alt"></i> Login
+                                </a>
+                                <a href="Register-Form.php" class="register-link">
+                                    <i class="fas fa-user-plus"></i> Register
+                                </a>
+                            </div>
+                        <?php endif; ?>
                         <img src="../images/close_logo.png" alt="Close" class="close-icon">
                     </div>
                 </div>
@@ -586,18 +1068,30 @@ if ($userId) {
                             <li><a href="New-Arrival-Section.php">New Arrivals</a></li>
                             <li><a href="Best-Sellers-Section.php">Best Sellers</a></li>
                             <li><a href="Limited-Time-Offers.php">Special Offers</a></li>
-                            <li><a href="my-orders.php">My Orders</a></li>
+                            <?php if ($isLoggedIn && $isUser): ?>
+                                <li><a href="my-orders.php">My Orders</a></li>
+                            <?php else: ?>
+                                <li><a href="Login-Form.php" class="disabled-link">My Orders</a></li>
+                            <?php endif; ?>
                         </ul>
                     </nav>
 
                     <!-- Right Side Icons -->
                     <div class="right-nav">
                         <div class="action-icons">
-                            <!-- Updated: Cart icon links to cart-section.php -->
-                            <a href="cart-section.php" class="icon-link">
-                                <img src="../images/cart_logo.png" alt="Cart" class="nav-icon">
-                                <span id="cart-badge" class="icon-badge"><?php echo $cartCount; ?></span>
-                            </a>
+                            <?php if ($isLoggedIn && $isUser): ?>
+                                <!-- Cart icon for logged in users -->
+                                <a href="cart-section.php" class="icon-link">
+                                    <img src="../images/cart_logo.png" alt="Cart" class="nav-icon">
+                                    <span id="cart-badge" class="icon-badge"><?php echo $cartCount; ?></span>
+                                </a>
+                            <?php else: ?>
+                                <!-- Disabled cart icon for guests -->
+                                <a href="Login-Form.php" class="icon-link disabled" title="Login to access cart">
+                                    <img src="../images/cart_logo.png" alt="Cart" class="nav-icon">
+                                    <span id="cart-badge" class="icon-badge">0</span>
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -640,13 +1134,15 @@ if ($userId) {
                                     $displayPath = '../' . $imagePath;
                                 }
                                 ?>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <img src="<?php echo $displayPath; ?>" 
                                          alt="<?php echo htmlspecialchars($product['name']); ?>"
                                          onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
                                 </a>
                             <?php } else { ?>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <div class="default-product-image">
                                         <i class="fas fa-image"></i> No image
                                     </div>
@@ -665,29 +1161,39 @@ if ($userId) {
                         </div>
                         <div class="product-info">
                             <h3>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" class="product-name-link">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   class="product-name-link"
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <?php echo htmlspecialchars($product['name']); ?>
                                 </a>
                             </h3>
                             <div class="price-container">
                                 <?php if ($isDiscounted && $discountPercent > 0): ?>
-                                    <span class="original-price">$<?php echo number_format($originalPrice, 2); ?></span>
-                                    <span class="current-price">$<?php echo number_format($discountPrice, 2); ?></span>
+                                    <span class="original-price">₱<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($discountPrice, 2); ?></span>
                                 <?php else: ?>
-                                    <span class="current-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($originalPrice, 2); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <button class="add-to-cart-btn" 
-                                    data-product-id="<?php echo $product['id']; ?>"
-                                    data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
-                                    data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
-                                    <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
-                                <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
-                            </button>
-                            <a href="product-details.php?id=<?php echo $product['id']; ?>">
-                                <button class="view-more-btn">
+                            <?php if ($isLoggedIn && $isUser): ?>
+                                <button class="add-to-cart-btn" 
+                                        data-product-id="<?php echo $product['id']; ?>"
+                                        data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
+                                        data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
+                                        <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                                    <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
+                                </button>
+                            <?php else: ?>
+                                <button class="add-to-cart-btn login-required" 
+                                        onclick="showLoginRequired()">
+                                    <i class="fas fa-sign-in-alt"></i> Login to Add to Cart
+                                </button>
+                            <?php endif; ?>
+                            
+                            <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>">
+                                <button class="view-more-btn <?php echo ($isLoggedIn && $isUser) ? '' : 'login-required'; ?>">
                                     <i class="fas fa-eye"></i>
-                                    <span>View Details</span>
+                                    <span><?php echo ($isLoggedIn && $isUser) ? 'View Details' : 'Login to View Details'; ?></span>
                                 </button>
                             </a>
                         </div>
@@ -702,11 +1208,15 @@ if ($userId) {
         </div>
 
         <div class="view-all">
-            <a href="New-Arrival-Section.php">View All</a>
+            <?php if ($isLoggedIn && $isUser): ?>
+                <a href="New-Arrival-Section.php">View All</a>
+            <?php else: ?>
+                <a href="Login-Form.php" class="login-required-link">Login to View All</a>
+            <?php endif; ?>
         </div>
     </section>
 
-    <!-- Best Sellers Section -->
+    <!-- Best Sellers Section - FIXED -->
     <section class="best-sellers">
         <h2 class="section-title">BEST SELLERS</h2>
         
@@ -741,18 +1251,23 @@ if ($userId) {
                                     $displayPath = '../' . $imagePath;
                                 }
                                 ?>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <img src="<?php echo $displayPath; ?>" 
                                          alt="<?php echo htmlspecialchars($product['name']); ?>"
                                          onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
                                 </a>
                             <?php } else { ?>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" title="View Product Details">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <div class="default-product-image">
                                         <i class="fas fa-image"></i> No image
                                     </div>
                                 </a>
                             <?php } ?>
+                            
+                            <!-- Best Seller Badge -->
+                            <div class="best-seller-badge">BEST SELLER</div>
                             
                             <?php if ($isDiscounted && $discountPercent > 0): ?>
                                 <div class="discount-badge-landing">-<?php echo $discountPercent; ?>% OFF</div>
@@ -766,29 +1281,41 @@ if ($userId) {
                         </div>
                         <div class="product-info">
                             <h3>
-                                <a href="product-details.php?id=<?php echo $product['id']; ?>" class="product-name-link">
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   class="product-name-link"
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
                                     <?php echo htmlspecialchars($product['name']); ?>
                                 </a>
                             </h3>
                             <div class="price-container">
                                 <?php if ($isDiscounted && $discountPercent > 0): ?>
-                                    <span class="original-price">$<?php echo number_format($originalPrice, 2); ?></span>
-                                    <span class="current-price">$<?php echo number_format($discountPrice, 2); ?></span>
+                                    <span class="original-price">₱<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($discountPrice, 2); ?></span>
                                 <?php else: ?>
-                                    <span class="current-price">$<?php echo number_format($originalPrice, 2); ?></span>
+                                    <span class="current-price">₱<?php echo number_format($originalPrice, 2); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <button class="add-to-cart-btn" 
-                                    data-product-id="<?php echo $product['id']; ?>"
-                                    data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
-                                    data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
-                                    <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
-                                <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
-                            </button>
-                            <a href="product-details.php?id=<?php echo $product['id']; ?>">
-                                <button class="view-more-btn">
+                            <?php if ($product['sold_count'] > 0): ?>
+                                <div class="sold-count"><?php echo $product['sold_count']; ?> sold</div>
+                            <?php endif; ?>
+                            <?php if ($isLoggedIn && $isUser): ?>
+                                <button class="add-to-cart-btn" 
+                                        data-product-id="<?php echo $product['id']; ?>"
+                                        data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
+                                        data-product-price="<?php echo $isDiscounted ? $discountPrice : $originalPrice; ?>"
+                                        <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                                    <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
+                                </button>
+                            <?php else: ?>
+                                <button class="add-to-cart-btn login-required" 
+                                        onclick="showLoginRequired()">
+                                    <i class="fas fa-sign-in-alt"></i> Login to Add to Cart
+                                </button>
+                            <?php endif; ?>
+                            <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>">
+                                <button class="view-more-btn <?php echo ($isLoggedIn && $isUser) ? '' : 'login-required'; ?>">
                                     <i class="fas fa-eye"></i>
-                                    <span>View Details</span>
+                                    <span><?php echo ($isLoggedIn && $isUser) ? 'View Details' : 'Login to View Details'; ?></span>
                                 </button>
                             </a>
                         </div>
@@ -796,75 +1323,205 @@ if ($userId) {
                 <?php endwhile; ?>
             <?php else: ?>
                 <div class="empty-state">
-                    <p>No best sellers available at the moment.</p>
-                    <p>Check back soon!</p>
+                    <p>No best sellers available yet.</p>
+                    <p>Be the first to buy and create our best sellers list!</p>
                 </div>
             <?php endif; ?>
         </div>
 
         <div class="view-all">
-            <a href="Best-Sellers-Section.php">View All</a>
+            <?php if ($isLoggedIn && $isUser): ?>
+                <a href="Best-Sellers-Section.php">View All</a>
+            <?php else: ?>
+                <a href="Login-Form.php" class="login-required-link">Login to View All</a>
+            <?php endif; ?>
         </div>
     </section>
 
-    <!-- Customer Reviews Section -->
-    <section class="customer-reviews">
-        <div class="reviews-header">
-            <h2 class="section-title" style="margin-bottom: 0;">OUR HAPPY CUSTOMERS</h2>
-            <div class="reviews-navigation">
-                <div class="nav-arrow">←</div>
-                <div class="nav-arrow">→</div>
-            </div>
+    <!-- Special Offers Section -->
+    <section class="special-offers">
+        <h2 class="section-title">SPECIAL OFFERS</h2>
+        
+        <div class="products-grid">
+            <?php if ($specialOffersResult && $specialOffersResult->num_rows > 0): ?>
+                <?php while($product = $specialOffersResult->fetch_assoc()): ?>
+                    <?php
+                    $isDiscounted = $product['is_discounted'] == 1;
+                    $discountPercent = $product['discount_percent'];
+                    $originalPrice = $product['price'];
+                    $discountPrice = $originalPrice * (1 - $discountPercent / 100);
+                    // Calculate savings
+                    $savings = $originalPrice - $discountPrice;
+                    ?>
+                    <div class="product-card">
+                        <div class="product-image">
+                            <?php 
+                            // Check if image path exists and is valid
+                            $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : '';
+                            
+                            if (!empty($imagePath)) {
+                                // Check if path starts with 'uploads/' or '../uploads/'
+                                if (strpos($imagePath, 'uploads/') === 0) {
+                                    // It's already a relative path from root
+                                    $displayPath = '../' . $imagePath;
+                                } else if (strpos($imagePath, '../uploads/') === 0) {
+                                    // It starts with ../uploads/
+                                    $displayPath = $imagePath;
+                                } else if (strpos($imagePath, 'http') === 0) {
+                                    // It's an absolute URL
+                                    $displayPath = $imagePath;
+                                } else {
+                                    // It's a relative path, prepend ../
+                                    $displayPath = '../' . $imagePath;
+                                }
+                                ?>
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
+                                    <img src="<?php echo $displayPath; ?>" 
+                                         alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                         onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'default-product-image\'><i class=\'fas fa-image\'></i> Image not available</div>';">
+                                </a>
+                            <?php } else { ?>
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
+                                    <div class="default-product-image">
+                                        <i class="fas fa-image"></i> No image
+                                    </div>
+                                </a>
+                            <?php } ?>
+                            
+                            <!-- Special Offer Badge -->
+                            <div class="special-offer-badge">-<?php echo $discountPercent; ?>% OFF</div>
+                            
+                            <?php if ($product['stock'] > 0): ?>
+                                <span class="stock-badge">In Stock (<?php echo $product['stock']; ?>)</span>
+                            <?php else: ?>
+                                <span class="stock-badge out-of-stock">Out of Stock</span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="product-info">
+                            <h3>
+                                <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>" 
+                                   class="product-name-link"
+                                   title="<?php echo ($isLoggedIn && $isUser) ? 'View Product Details' : 'Login to view details'; ?>">
+                                    <?php echo htmlspecialchars($product['name']); ?>
+                                </a>
+                            </h3>
+                            <div class="price-container">
+                                <span class="original-price">₱<?php echo number_format($originalPrice, 2); ?></span>
+                                <span class="current-price">₱<?php echo number_format($discountPrice, 2); ?></span>
+                                <small style="color: #27ae60; font-weight: bold;">
+                                    Save ₱<?php echo number_format($savings, 2); ?>
+                                </small>
+                            </div>
+                            <?php if ($isLoggedIn && $isUser): ?>
+                                <button class="add-to-cart-btn" 
+                                        data-product-id="<?php echo $product['id']; ?>"
+                                        data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
+                                        data-product-price="<?php echo $discountPrice; ?>"
+                                        <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
+                                    <?php echo ($product['stock'] > 0) ? 'Add to Cart' : 'Out of Stock'; ?>
+                                </button>
+                            <?php else: ?>
+                                <button class="add-to-cart-btn login-required" 
+                                        onclick="showLoginRequired()">
+                                    <i class="fas fa-sign-in-alt"></i> Login to Add to Cart
+                                </button>
+                            <?php endif; ?>
+                            <a href="<?php echo ($isLoggedIn && $isUser) ? 'product-details.php?id=' . $product['id'] : 'Login-Form.php'; ?>">
+                                <button class="view-more-btn <?php echo ($isLoggedIn && $isUser) ? '' : 'login-required'; ?>">
+                                    <i class="fas fa-eye"></i>
+                                    <span><?php echo ($isLoggedIn && $isUser) ? 'View Details' : 'Login to View Details'; ?></span>
+                                </button>
+                            </a>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div class="empty-state">
+                    <p>No special offers available at the moment.</p>
+                    <p>Check back soon for amazing discounts!</p>
+                </div>
+            <?php endif; ?>
         </div>
 
-        <div class="reviews-grid">
-            <!-- Review 1 -->
-            <div class="review-card">
-                <div class="review-stars">
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                </div>
-                <div class="reviewer-name">
-                    Sarah M.
-                    <div class="verified-badge"></div>
-                </div>
-                <p class="review-text">"I'm blown away by the quality and style of the clothes I received from Sprout Productions. From casual wear to elegant dresses, every piece I've bought has exceeded my expectations."</p>
-            </div>
+        <div class="view-all">
+            <?php if ($isLoggedIn && $isUser): ?>
+                <a href="Limited-Time-Offers.php">View All</a>
+            <?php else: ?>
+                <a href="Login-Form.php" class="login-required-link">Login to View All</a>
+            <?php endif; ?>
+        </div>
+    </section>
 
-            <!-- Review 2 -->
-            <div class="review-card">
-                <div class="review-stars">
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                </div>
-                <div class="reviewer-name">
-                    Alex K.
-                    <div class="verified-badge"></div>
-                </div>
-                <p class="review-text">"Finding clothes that align with my personal style used to be a challenge until I discovered Sprout Productions. The range of options they offer is truly remarkable, catering to a variety of tastes and occasions."</p>
-            </div>
+    <!-- Customer Reviews Section - DYNAMIC WITH SLIDER -->
+    <section class="customer-reviews">
+        <div class="reviews-header">
+            <h2 class="section-title" style="margin-bottom: 0;">CUSTOMER REVIEWS</h2>
+        </div>
 
-            <!-- Review 3 -->
-            <div class="review-card">
-                <div class="review-stars">
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
-                    <div class="star-filled"></div>
+        <div class="reviews-grid" id="reviews-container">
+            <?php if (!empty($reviews)): ?>
+                <?php foreach($reviews as $index => $review): ?>
+                    <div class="review-card">
+                        <div class="review-stars">
+                            <?php for($i = 1; $i <= 5; $i++): ?>
+                                <div class="star-filled" style="<?php echo $i > $review['rating'] ? 'color: #ddd;' : ''; ?>"></div>
+                            <?php endfor; ?>
+                        </div>
+                        <div class="reviewer-name">
+                            <?php 
+                            // Extract username from email (part before @)
+                            $email = !empty($review['email']) ? $review['email'] : 'Anonymous User';
+                            $emailParts = explode('@', $email);
+                            $username = $emailParts[0];
+                            echo htmlspecialchars(ucfirst($username));
+                            ?>
+                            <div class="verified-badge"></div>
+                        </div>
+                        <?php if (!empty($review['email'])): ?>
+                            <div class="reviewer-email">
+                                <?php echo htmlspecialchars($review['email']); ?>
+                            </div>
+                        <?php endif; ?>
+                        <p class="review-text">"<?php echo htmlspecialchars($review['review_text']); ?>"</p>
+                        
+                        <?php if (!empty($review['product_name'])): ?>
+                        <div class="review-product">
+                            <div class="product-thumbnail">
+                                <?php 
+                                $productImagePath = !empty($review['product_image']) ? htmlspecialchars($review['product_image']) : '';
+                                if (!empty($productImagePath)) {
+                                    $displayPath = strpos($productImagePath, 'uploads/') === 0 ? '../' . $productImagePath : $productImagePath;
+                                    ?>
+                                    <img src="<?php echo $displayPath; ?>" alt="<?php echo htmlspecialchars($review['product_name']); ?>">
+                                <?php } else { ?>
+                                    <i class="fas fa-image" style="color: #ccc;"></i>
+                                <?php } ?>
+                            </div>
+                            <div class="product-name">
+                                <?php echo htmlspecialchars($review['product_name']); ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <div class="review-date">
+                            <?php 
+                            $reviewDate = new DateTime($review['created_at']);
+                            echo $reviewDate->format('F j, Y');
+                            ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="review-empty-state">
+                    <p>No reviews yet.</p>
+                    <p>Be the first to share your experience!</p>
+                    <?php if ($isLoggedIn && $isUser): ?>
+                        <a href="#" class="write-review-btn">Write a Review</a>
+                    <?php endif; ?>
                 </div>
-                <div class="reviewer-name">
-                    James L.
-                    <div class="verified-badge"></div>
-                </div>
-                <p class="review-text">"As someone who's always on the lookout for unique fashion pieces, I'm thrilled to have stumbled upon Sprout Productions. The selection of clothes is not only diverse but also on-point with the latest trends."</p>
-            </div>
+            <?php endif; ?>
         </div>
     </section>
 
@@ -921,10 +1578,10 @@ if ($userId) {
         </div>
     </footer>
 
-    <!-- JavaScript for Add to Cart functionality -->
+    <!-- JavaScript for Add to Cart functionality and Review Slider -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+        const addToCartButtons = document.querySelectorAll('.add-to-cart-btn:not(.login-required)');
         const cartBadge = document.getElementById('cart-badge');
         
         // Function to update cart badge
@@ -1039,8 +1696,15 @@ if ($userId) {
             }, 5000);
         }
         
-        // Initialize cart badge on page load
-        updateCartBadge();
+        // Function to show login required message
+        window.showLoginRequired = function() {
+            showNotification('Please login first to access this feature!', 'warning');
+        }
+        
+        // Initialize cart badge on page load (only if user is logged in)
+        <?php if ($isLoggedIn && $isUser): ?>
+            updateCartBadge();
+        <?php endif; ?>
     });
     </script>
 
